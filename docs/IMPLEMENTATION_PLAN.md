@@ -1,33 +1,29 @@
 # Implementation plan
 
-Milestone phases are sequencing guides, not promised delivery dates.
+Phases are engineering milestones, not release dates.
 
-## Phase 0 — design and infrastructure (in progress)
-- [x] Initial proposal, modular architecture, threat model, standards references, developer documentation.
-- [x] ADR-0002 language/framework decision.
-- [x] Define core persistence, DNS provider, authorization and event ports.
-- [x] First SQLite desired-state adapter and unit tests.
-- [ ] Finalize generalized DNS RRset ADR and typed record handler strategy.
-- [ ] Review security and schema semantics for production requirements.
+## Phase 0 — design and groundwork
+- [x] Architecture proposal, ADR-0001 and ADR-0002.
+- [x] Core RRset model, interfaces and SQLite desired-state persistence.
+- [x] Authorization-gated intent orchestration and SQLite intent journal.
+- [x] First unit tests and Python CI.
+- [ ] Generalized DNS RRset type design ADR and durable schema migration strategy.
 
-## Phase 1 — secure DDNS publishing core
-- [ ] Add typed error categories, transactional update-intent/outbox and crash reconciliation.
-- [ ] Add request orchestration with strict per-record authorization and idempotency.
-- [ ] Implement testable RFC 2136/TSIG DNS adapter and its contract suite.
-- [ ] Implement FastAPI transport with scoped-token authentication and rate limiting.
-- [ ] Test A/AAAA publication against isolated authoritative DNS and failure paths.
-- [ ] Add configuration validation and complete operational docs.
+## Phase 1 — secure real DNS publication
+- [ ] Securely bind principal identity to request entry points; define least-privilege policy/token storage.
+- [ ] Add durable reconciliation of ambiguous publishing intents and a worker lifecycle.
+- [ ] Enforce per-request idempotency, backend retry classification and conditional update semantics.
+- [ ] Implement RFC 2136/TSIG DNS adapter and isolated authoritative DNS integration tests.
+- [ ] Coordinate journal and desired-state storage consistently across failures.
+- [ ] Implement authenticated HTTPS REST transport and rate limiting.
 
-## Phase 2 — usability and compatibility
-- [ ] DynDNS2 adapter, systemd/container deployment, backup/restore and UDDNSUpdater compatibility tests.
+## Phase 2 — usability
+- [ ] DynDNS2 client compatibility, deployment, backup/restore and integration with UDDNSUpdater.
 
 ## Phase 3 — management
-- [ ] Multi-user roles, device groups, web management UI, token rotation and audit log queries.
+- [ ] Roles, groups, audited activity and browser management interface.
 
-## Phase 4 — plugin integrations
-- [ ] Versioned SDK, backend capability negotiation, additional DNS providers, event sinks and monitoring.
+## Phase 4 — plugins
+- [ ] Backend capability negotiation, provider adapters, versioned SDK and contract tests.
 
-## Future
-Private-zone automation, generalized DNS RRsets and record-type-specific authorization, WireGuard helpers, HA and additional stores.
-
-For each behavior change: tests, docs, CI, local Git commit, and compatibility assessment.
+Every functional change needs tests, docs and CI.

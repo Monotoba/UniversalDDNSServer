@@ -1,17 +1,17 @@
 # Changelog
 
-All notable changes will be recorded here. There is no stable release.
+All notable changes will be recorded here. No stable release exists.
 
 ## [Unreleased]
 ### Added
-- ADR-0002 selecting Python 3.11+ and FastAPI for a future HTTP adapter.
-- Core-owned versioned interfaces for DNS backends, state persistence, authorization and events.
-- Immutable validated A/AAAA resource record set domain model.
-- Transactional SQLite desired-state adapter with version guard, idempotent updates and deletion.
-- Initial domain and SQLite unit tests and Python CI matrix.
+- Authorization-gated update orchestration with core-owned backend interfaces.
+- Durable SQLite update-intent journal with pending/applying/applied/failed states.
+- Partial unique index preventing competing active updates to the same RRset.
+- Tests for denied requests, application, backend failure and crash-ambiguous state.
+- ADR-0002, Python domain model, SQLite desired-state adapter and core tests.
 
-### Not yet implemented
-- HTTP server, DDNS-compatible endpoints, user/token authentication, DNS publication and operational deployment.
+### Limitations
+- No operational HTTP/DDNS server or real DNS backend; no automatic recovery of applying intents, per-client idempotency, or production credentials.
 
 ## [0.0.0-design] — 2026-10-13
-Initial design and open-source documentation baseline.
+Initial design baseline and OSS policies.
