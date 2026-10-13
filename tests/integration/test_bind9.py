@@ -112,6 +112,21 @@ class Bind9IntegrationTests(unittest.TestCase):
             backend.publish_if_absent(overwrite)
         self.assertEqual(backend.observe(original), original)
 
+    def test_existing_record_prerequisite_rejects_stale_data(self):
+        backend = self.backend()
+        original = RecordSet("example.test", "condition.example.test",
+                             "A", 120, ("192.0.2.41",))
+        changed = RecordSet("example.test", "condition.example.test",
+                            "A", 120, ("192.0.2.42",))
+        stale = RecordSet("example.test", "condition.example.test",
+                          "A", 120, ("192.0.2.43",))
+        backend.publish(original)
+        backend.publish_if_contains(original, changed)
+        self.assertEqual(backend.observe(changed), changed)
+        with self.assertRaises(Exception):
+            backend.publish_if_contains(original, stale)
+        self.assertEqual(backend.observe(changed), changed)
+
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
         record = RecordSet("example.test", "denied.example.test",

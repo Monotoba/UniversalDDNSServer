@@ -97,6 +97,32 @@ class RFC2136Backend:
                 f"conditional DNS update rejected: {dns.rcode.to_text(response.rcode())}"
             )
 
+    def publish_if_contains(self, expected: RecordSet, replacement: RecordSet) -> None:
+        """Atomically require all expected RDATA to exist before replacement.
+
+        RFC 2136 has no exact RRset-equality prerequisite: additional records
+        may exist, so this is NOT a full compare-and-swap.
+        """
+        if expected.key != replacement.key or expected.zone != self._config.zone:
+            raise ValueError("expected and replacement must refer to the configured RRset")
+        update = dns.update.Update(
+            self._config.zone, keyring=self._keyring,
+            keyname=self._config.key_name, keyalgorithm=self._config.key_algorithm,
+        )
+        for value in expected.values:
+            update.present(expected.name, expected.record_type, value)
+        update.replace(replacement.name, replacement.ttl,
+                       replacement.record_type, *replacement.values)
+        try:
+            response = self._transport(update, self._config.server,
+                                       port=self._config.port, timeout=self._config.timeout)
+        except (dns.exception.DNSException, OSError) as exc:
+            raise DNSPublicationError("conditional DNS update transport failed") from exc
+        if response.rcode() != dns.rcode.NOERROR:
+            raise DNSPublicationError(
+                f"conditional DNS update rejected: {dns.rcode.to_text(response.rcode())}"
+            )
+
     def observe(self, rrset: RecordSet) -> RecordSet | None:
         """Return authoritative RRset or None when *authoritatively* absent.
 
