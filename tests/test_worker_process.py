@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from threading import Event
 from pathlib import Path
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
 from universalddns.domain import RecordSet
@@ -21,6 +22,25 @@ class Backend:
         return self.writes[-1] if self.writes else None
 
 class WorkerTests(unittest.TestCase):
+    def test_stopped_poll_loop_does_not_process_work(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "data.db"
+            backend = Backend()
+            def journal_factory():
+                return SQLiteIntentJournal(path)
+            def service_factory(j):
+                return UpdateOrchestrator(Allow(), j, backend)
+            with journal_factory() as j:
+                record = RecordSet("example.org", "stop.example.org", "A", 60,
+                                   ("192.0.2.35",))
+                service_factory(j).submit("client", record)
+                stopped = Event()
+                stopped.set()
+                PublicationWorker(j, service_factory(j)).serve(
+                    stopped, journal_factory, service_factory)
+            self.assertEqual(backend.writes, [])
+
+
     def test_only_pending_runs(self):
         with tempfile.TemporaryDirectory() as d:
             with SQLiteIntentJournal(Path(d) / "data.db") as j:
