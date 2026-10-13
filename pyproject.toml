@@ -12,5 +12,23 @@ dependencies = ["dnspython>=2.6,<3"]
 license = {file = "LICENSE"}
 authors = [{name = "R. Morgan"}]
 
+[project.optional-dependencies]
+dev = ["ruff>=0.9,<1", "mypy>=1.15,<2"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/universalddns/domain.py", "src/universalddns/ports.py"]
+show_error_codes = true
+warn_unused_ignores = true
+# Scope is deliberately limited until all infrastructure adapters have typed signatures.
