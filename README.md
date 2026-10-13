@@ -14,10 +14,12 @@
 - Versioned core ports: DNS backends, state repositories, authorization and events.
 - SQLite desired-state repository and durable update-intent journal.
 - Authorization-gated `UpdateOrchestrator` and state transitions (`pending`, `applying`, `applied`, `failed`).
-- RFC 2136/TSIG A/AAAA publishing adapter verified against an isolated BIND 9 authoritative server.\n- Durable per-principal idempotency keys, authoritative observation, and explicit recovery/retry operations.
-- Authenticated FastAPI record-update intake with scoped tokens, idempotency, and owner-restricted intent status.\n- Unit tests, SQLite workflow integration, Ruff lint, scoped mypy checks and GitHub Actions.
+- RFC 2136/TSIG A/AAAA publishing adapter verified against an isolated BIND 9 authoritative server.
+- Durable per-principal idempotency keys, authoritative observation, and explicit recovery/retry operations.
+- Authenticated FastAPI record-update intake with scoped tokens, idempotency, and owner-restricted intent status.
+- Unit tests, SQLite workflow integration, Ruff lint, scoped mypy checks and GitHub Actions.
 
-**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; unattended retries, multi-writer guarantees, client authentication, an operational DNS publishing worker, production TLS, durable token provisioning, global rate limiting and deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
+**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; unattended retries, multi-writer guarantees, a continuously scheduled DNS publishing service, production TLS, managed token provisioning, global rate limiting and deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
 
 ## Test the core
 
