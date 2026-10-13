@@ -21,6 +21,14 @@ class DomainTests(unittest.TestCase):
             RecordSet("example.com","a.example.com","A",60,("192.0.2.1","192.0.2.1"))
         with self.assertRaises(ValueError):
             RecordSet("example.com","a.example.com","A",-1,("192.0.2.1",))
+    def test_rrset_address_order_is_not_semantic(self):
+        first = RecordSet("example.org", "node.example.org", "A", 60,
+                          ("192.0.2.11", "192.0.2.10"))
+        second = RecordSet("example.org", "node.example.org", "A", 60,
+                           ("192.0.2.10", "192.0.2.11"))
+        self.assertEqual(first, second)
+        self.assertEqual(first.values, ("192.0.2.10", "192.0.2.11"))
+
     def test_future_record_type_not_enabled(self):
         with self.assertRaises(ValueError):
             RecordSet("example.com","a.example.com","TXT",60,("value",))
