@@ -68,7 +68,7 @@ def create_app(
     journal_factory: Callable[[], SQLiteIntentJournal],
     orchestrator_factory: Callable[[SQLiteIntentJournal], UpdateOrchestrator],
     records: dict[str, RecordSet],
-    principals: tuple[APIPrincipal, ...],
+    principals: tuple[APIPrincipal, ...] | Callable[[], tuple[APIPrincipal, ...]],
     *,
     rate_limit: int = 60,
 ) -> FastAPI:
@@ -76,10 +76,9 @@ def create_app(
 
     Each request receives a fresh SQLite connection; worker execution is not exposed.
     """
-    if not principals or not records:
+    current = principals() if callable(principals) else principals
+    if not current or not records:
         raise ValueError("API requires configured principals and managed records")
-    if len({p.identifier for p in principals}) != len(principals):
-        raise ValueError("duplicate principal")
     gate = RateGate(rate_limit)
     app = FastAPI(title="UniversalDDNSServer", version="0.1.0-prealpha")
 
@@ -87,7 +86,7 @@ def create_app(
         token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
         digest = hashlib.sha256(token.encode()).hexdigest()
         identity = None
-        for p in principals:
+        for p in (principals() if callable(principals) else principals):
             if hmac.compare_digest(p.token_sha256, digest):
                 identity = p
         if identity is None:
