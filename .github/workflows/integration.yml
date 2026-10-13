@@ -5,14 +5,16 @@ on:
 permissions:
   contents: read
 jobs:
-  sqlite-integration:
-    name: SQLite workflow integration
+  bind9-and-sqlite:
+    name: BIND 9 and SQLite integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install isolated authoritative DNS
+        run: sudo apt-get update && sudo apt-get install -y bind9
       - name: Install package
         run: python -m pip install -e .
       - name: Run integration tests
