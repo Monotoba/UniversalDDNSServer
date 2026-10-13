@@ -11,9 +11,9 @@ Phases are engineering milestones, not release dates.
 
 ## Phase 1 — secure real DNS publication
 - [ ] Securely bind principal identity to request entry points; define least-privilege policy/token storage.
-- [ ] Add durable reconciliation of ambiguous publishing intents and a worker lifecycle.
-- [ ] Enforce per-request idempotency, backend retry classification and conditional update semantics.
-- [ ] Implement RFC 2136/TSIG DNS adapter and isolated authoritative DNS integration tests.
+- [x] Add durable intent-state reconciliation against authoritative DNS and explicit retries.\n- [ ] Add a worker lifecycle, per-record ownership leases and crash-safe concurrent recovery.
+- [x] Persist per-principal request idempotency keys with conflicting-payload checks.\n- [ ] Add backend retry classification, bounded scheduling and conditional DNS update semantics.
+- [x] Implement RFC 2136/TSIG adapter and isolated BIND 9 A/AAAA, replacement and negative integration tests.
 - [ ] Coordinate journal and desired-state storage consistently across failures.
 - [ ] Implement authenticated HTTPS REST transport and rate limiting.
 
