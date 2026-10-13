@@ -29,3 +29,18 @@ class PublicationWorker:
             except Exception:
                 errors += 1
         return WorkerReport(len(pending), applied, errors, recovery.verified)
+
+    def serve(self, stop_event, journal_factory, orchestrator_factory, *,
+              interval_seconds: float = 2.0, max_items: int = 100):
+        """Cooperative poll loop with separate SQLite connection per cycle.
+
+        The event is checked between cycles. In-flight DNS queries use backend
+        timeouts and cannot be interrupted by the stop signal.
+        """
+        if not 0.1 <= interval_seconds <= 3600:
+            raise ValueError("invalid polling interval")
+        while not stop_event.is_set():
+            with journal_factory() as journal:
+                orchestrator = orchestrator_factory(journal)
+                PublicationWorker(journal, orchestrator).run_once(max_items=max_items)
+            stop_event.wait(interval_seconds)
