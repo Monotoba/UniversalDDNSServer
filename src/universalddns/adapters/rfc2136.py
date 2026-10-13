@@ -1,7 +1,4 @@
-"""RFC 2136 DNS UPDATE adapter with TSIG authentication.
-
-Acknowledgment from a DNS backend does not prove cache convergence.
-"""
+"""RFC 2136 DNS UPDATE with TSIG; authoritative reads for reconciliation."""
 import base64
 import binascii
 from dataclasses import dataclass
@@ -9,8 +6,11 @@ from ipaddress import ip_address
 from typing import Callable
 
 import dns.exception
+import dns.flags
+import dns.message
 import dns.query
 import dns.rcode
+import dns.rdatatype
 import dns.tsigkeyring
 import dns.update
 
@@ -19,7 +19,7 @@ from ..ports import BackendCapabilities
 
 
 class DNSPublicationError(RuntimeError):
-    """The authoritative server rejected or could not process an update."""
+    """Authoritative DNS rejected a request or its result is unknown."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,12 +34,11 @@ class RFC2136Config:
 
     def __post_init__(self):
         object.__setattr__(self, "zone", canonical_name(self.zone))
-        if not self.server or not isinstance(self.server, str):
+        if not isinstance(self.server, str) or not self.server:
             raise ValueError("server required")
-        # Do not allow client-controlled DNS names for the update destination.
         ip_address(self.server)
         if not self.key_name or not self.key_secret:
-            raise ValueError("TSIG key name and secret required")
+            raise ValueError("TSIG key and secret required")
         try:
             if not base64.b64decode(self.key_secret, validate=True):
                 raise ValueError("empty TSIG secret")
@@ -52,8 +51,6 @@ class RFC2136Config:
 
 
 class RFC2136Backend:
-    """Replace an A/AAAA RRset using signed DNS UPDATE over TCP."""
-
     capabilities = BackendCapabilities(frozenset({"A", "AAAA"}), supports_prerequisites=False)
 
     def __init__(self, config: RFC2136Config, *, transport: Callable | None = None):
@@ -64,20 +61,42 @@ class RFC2136Backend:
     def publish(self, rrset: RecordSet) -> None:
         if rrset.zone != self._config.zone:
             raise ValueError("RRset is outside configured backend zone")
-        if rrset.record_type not in self.capabilities.supported_record_types:
-            raise ValueError("unsupported DNS record type")
         update = dns.update.Update(
-            self._config.zone,
-            keyring=self._keyring,
-            keyname=self._config.key_name,
-            keyalgorithm=self._config.key_algorithm,
+            self._config.zone, keyring=self._keyring,
+            keyname=self._config.key_name, keyalgorithm=self._config.key_algorithm,
         )
-        # Replaces the entire RRset; tightly scoped TSIG server policy is essential.
         update.replace(rrset.name, rrset.ttl, rrset.record_type, *rrset.values)
         try:
-            response = self._transport(update, self._config.server, port=self._config.port,
-                                       timeout=self._config.timeout)
+            response = self._transport(update, self._config.server,
+                                       port=self._config.port, timeout=self._config.timeout)
         except (dns.exception.DNSException, OSError) as exc:
             raise DNSPublicationError("DNS update transport failed") from exc
         if response.rcode() != dns.rcode.NOERROR:
             raise DNSPublicationError(f"DNS update rejected: {dns.rcode.to_text(response.rcode())}")
+
+    def observe(self, rrset: RecordSet) -> RecordSet | None:
+        """Return authoritative RRset or None when *authoritatively* absent.
+
+        Uses untrusted-network-independent configured authoritative endpoint.
+        An observation error never counts as an absent record.
+        """
+        if rrset.zone != self._config.zone:
+            raise ValueError("RRset is outside configured backend zone")
+        question = dns.message.make_query(rrset.name, rrset.record_type)
+        question.flags &= ~dns.flags.RD
+        try:
+            response = dns.query.tcp(question, self._config.server,
+                                     port=self._config.port, timeout=self._config.timeout)
+        except (dns.exception.DNSException, OSError) as exc:
+            raise DNSPublicationError("authoritative query failed") from exc
+        if not response.flags & dns.flags.AA:
+            raise DNSPublicationError("answer is not authoritative")
+        if response.rcode() not in (dns.rcode.NOERROR, dns.rcode.NXDOMAIN):
+            raise DNSPublicationError("authoritative query returned an error")
+        for answer in response.answer:
+            if answer.name.to_text().lower() == rrset.name and (
+                dns.rdatatype.to_text(answer.rdtype) == rrset.record_type
+            ):
+                return RecordSet(rrset.zone, rrset.name, rrset.record_type, answer.ttl,
+                                 tuple(item.to_text() for item in answer))
+        return None
