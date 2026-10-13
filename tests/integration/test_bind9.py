@@ -7,6 +7,12 @@ import subprocess
 import tempfile
 import time
 import unittest
+from fastapi.testclient import TestClient
+from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
+from universalddns.http_api import create_app
+from universalddns.orchestrator import UpdateOrchestrator
+from universalddns.token_store import TokenStore
+from universalddns.worker import PublicationWorker
 from pathlib import Path
 
 import dns.message
@@ -126,6 +132,56 @@ class Bind9IntegrationTests(unittest.TestCase):
         with self.assertRaises(Exception):
             backend.publish_if_contains(original, stale)
         self.assertEqual(backend.observe(changed), changed)
+
+
+    def test_authenticated_http_queue_worker_to_authoritative_bind(self):
+        class Allow:
+            def may_update(self, principal_id, rrset):
+                return principal_id == "device"
+
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "state.db"
+            record = RecordSet("example.test", "pipeline.example.test",
+                               "A", 120, ("192.0.2.50",))
+            with TokenStore(db) as store:
+                token = store.issue("device", frozenset({"records:write", "intents:read"}),
+                                    frozenset({"pipeline"}))
+            def principal_provider():
+                with TokenStore(db) as store:
+                    return store.principals()
+            def journal_factory():
+                return SQLiteIntentJournal(db)
+            def orchestrator_factory(journal):
+                return UpdateOrchestrator(Allow(), journal, self.backend())
+            app = create_app(journal_factory, orchestrator_factory,
+                             {"pipeline": record}, principal_provider)
+            with TestClient(app) as client:
+                headers = {"Authorization": "Bearer " + token}
+                result = client.put("/api/v1/records/pipeline/address",
+                                    headers=headers,
+                                    json={"address": "192.0.2.51",
+                                          "request_id": "bind-pipeline-1"})
+                self.assertEqual(result.status_code, 202)
+                desired = RecordSet("example.test", "pipeline.example.test",
+                                    "A", 120, ("192.0.2.51",))
+                self.assertIsNone(self.backend().observe(desired))
+                with journal_factory() as journal:
+                    report = PublicationWorker(
+                        journal, orchestrator_factory(journal)
+                    ).run_once()
+                    self.assertEqual(report.applied, 1)
+                    self.assertEqual(PublicationWorker(
+                        journal, orchestrator_factory(journal)
+                    ).run_once().attempted, 0)
+                self.assertEqual(self.backend().observe(desired), desired)
+                status = client.get("/api/v1/intents/" + result.json()["intent_id"],
+                                    headers=headers)
+                self.assertEqual(status.json()["status"], "applied")
+                with TokenStore(db) as store:
+                    self.assertTrue(store.revoke(token))
+                self.assertEqual(client.get(
+                    "/api/v1/intents/" + result.json()["intent_id"],
+                    headers=headers).status_code, 401)
 
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
