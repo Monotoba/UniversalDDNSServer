@@ -15,7 +15,7 @@
 - SQLite desired-state repository and durable update-intent journal.
 - Authorization-gated `UpdateOrchestrator` and state transitions (`pending`, `applying`, `applied`, `failed`).
 - RFC 2136/TSIG A/AAAA publishing adapter verified against an isolated BIND 9 authoritative server.\n- Durable per-principal idempotency keys, authoritative observation, and explicit recovery/retry operations.
-- Authenticated FastAPI record-update intake with scoped tokens, idempotency and owner-restricted intent status.\n- Unit tests, SQLite workflow integration, Ruff lint, scoped mypy checks and GitHub Actions.
+- Authenticated FastAPI record-update intake with scoped tokens, idempotency, and owner-restricted intent status.\n- Unit tests, SQLite workflow integration, Ruff lint, scoped mypy checks and GitHub Actions.
 
 **Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; unattended retries, multi-writer guarantees, client authentication, an operational DNS publishing worker, production TLS, durable token provisioning, global rate limiting and deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
 
@@ -36,7 +36,9 @@ python -m unittest discover -s tests/integration -p 'test_*.py' -v
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md) · [Changelog](CHANGELOG.md)
 - [ADR-0002 language/framework](docs/architecture/ADR-0002-LANGUAGE-FRAMEWORK.md)
 - [Core implementation](docs/dev/CORE_IMPLEMENTATION.md) · [Update intent milestone](docs/dev/UPDATE_ORCHESTRATION.md)
-- [HTTP API pre-alpha](docs/dev/HTTP_API.md)\n- [BIND 9 integration](docs/dev/BIND9_INTEGRATION.md) · [Recovery](docs/dev/RECOVERY.md)\n- [Quality gates](docs/dev/QUALITY_AND_CI.md) · [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md)
+- [HTTP API pre-alpha](docs/dev/HTTP_API.md)
+- [BIND 9 integration](docs/dev/BIND9_INTEGRATION.md) · [Recovery](docs/dev/RECOVERY.md)
+- [Quality gates](docs/dev/QUALITY_AND_CI.md) · [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md)
 - [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
