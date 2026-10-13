@@ -1,4 +1,4 @@
-"""Documentation baseline checks. No server implementation is available yet."""
+"""Documentation checks for evolving pre-alpha capabilities."""
 from pathlib import Path
 import unittest
 
@@ -25,7 +25,8 @@ class DocumentationTests(unittest.TestCase):
 
     def test_status_is_explicit(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("no operational ddns/http server yet", readme.lower())
+        self.assertIn("pre-alpha", readme.lower())
+        self.assertIn("no configured production http deployment", readme.lower())
 
 
 if __name__ == "__main__":
