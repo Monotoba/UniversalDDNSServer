@@ -44,7 +44,7 @@ class RecordSet:
         object.__setattr__(self, "zone", zone)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "record_type", rt)
-        object.__setattr__(self, "values", tuple(normalized))
+        object.__setattr__(self, "values", tuple(sorted(normalized)))
 
     @property
     def key(self) -> tuple[str, str, str]:
