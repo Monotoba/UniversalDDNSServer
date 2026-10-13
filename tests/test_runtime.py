@@ -40,6 +40,14 @@ class RuntimeTests(unittest.TestCase):
             with TokenStore(settings.database) as store:
                 store.revoke(token)
             self.assertEqual(principals(), ())
+            alias = root / "linked-secret.json"
+            alias.symlink_to(secret)
+            data["credentials"] = str(alias)
+            cfg.write_text(json.dumps(data))
+            with self.assertRaises(ValueError):
+                load_settings(cfg)
+            data["credentials"] = str(secret)
+            cfg.write_text(json.dumps(data))
             os.chmod(secret, 0o644)
             with self.assertRaises(PermissionError):
                 load_settings(cfg)
