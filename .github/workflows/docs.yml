@@ -1,0 +1,13 @@
+name: Documentation baseline
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test repository baseline
+        run: python3 -m unittest discover -s tests -v
