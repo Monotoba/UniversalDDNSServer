@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
 from universalddns.domain import RecordSet
 from universalddns.http_api import APIPrincipal, create_app
+from universalddns.token_store import TokenStore
 from universalddns.orchestrator import UpdateOrchestrator
 from universalddns.ports import BackendCapabilities
 
@@ -70,6 +71,37 @@ class HTTPTests(unittest.TestCase):
         conflict = self.client.put(url, json={"address": "192.0.2.21", "request_id": "repeat-1"},
                                    headers=self.auth(self.alice))
         self.assertEqual(conflict.status_code, 409)
+
+
+    def test_persistent_token_revocation_affects_existing_app(self):
+        def principals():
+            with TokenStore(self.path) as store:
+                return store.principals()
+
+        def journal():
+            return SQLiteIntentJournal(self.path)
+
+        def service(j):
+            return UpdateOrchestrator(Policy(), j, Backend())
+
+        with TokenStore(self.path) as store:
+            token = store.issue("alice", frozenset({"records:write", "intents:read"}),
+                                frozenset({"host"}))
+        app = create_app(journal, service,
+                         {"host": RecordSet("example.org", "host.example.org", "A",
+                                            60, ("192.0.2.1",))}, principals)
+        with TestClient(app) as client:
+            headers = {"Authorization": "Bearer " + token}
+            self.assertEqual(client.put(
+                "/api/v1/records/host/address", headers=headers,
+                json={"address": "192.0.2.44", "request_id": "live-revoke"}
+            ).status_code, 202)
+            with TokenStore(self.path) as store:
+                self.assertTrue(store.revoke(token))
+            self.assertEqual(client.put(
+                "/api/v1/records/host/address", headers=headers,
+                json={"address": "192.0.2.44", "request_id": "another"}
+            ).status_code, 401)
 
     def test_validates_mapping_and_address(self):
         url = "/api/v1/records/host/address"
