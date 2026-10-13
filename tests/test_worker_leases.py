@@ -31,3 +31,18 @@ class LeaseTests(unittest.TestCase):
                 token = db.claim_with_lease(job.identifier)
                 db.finish_owned(job.identifier, token, succeeded=True)
                 self.assertEqual(db.get(job.identifier).state, UpdateState.APPLIED)
+
+    def test_legacy_unfenced_transitions_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with SQLiteIntentJournal(Path(temp) / "x.db") as db:
+                job = db.enqueue("client", RecordSet("example.org", "x.example.org", "A", 60, ("192.0.2.1",)))
+                with self.assertRaises(UpdateConflict):
+                    db.claim(job.identifier)
+                token = db.claim_with_lease(job.identifier)
+                with self.assertRaises(UpdateConflict):
+                    db.finish(job.identifier, succeeded=True)
+                with self.assertRaises(UpdateConflict):
+                    db.requeue(job.identifier)
+                with self.assertRaises(UpdateConflict):
+                    db.mark_verified(job.identifier)
+                db.finish_owned(job.identifier, token, succeeded=True)

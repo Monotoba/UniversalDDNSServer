@@ -1,5 +1,7 @@
-# Worker lease primitives
+# Worker lease enforcement
 
-SQLite claims now support persisted expiry and renewal. A leased worker whose deadline expires cannot mark the attempt completed; it is returned by expired_leases() for authoritative-state reconciliation. Expiration does **not** permit blind DNS retry, because network publication may have succeeded.
+The orchestrator claims pending jobs using SQLite-backed bounded leases. Completion requires the same token and an unexpired lease. Legacy unfenced claim() and finish() are disabled. Existing claim_owned() now delegates to bounded leases.
 
-These primitives are not yet wired into the orchestrator's legacy claim path. Previous claim/finish/requeue methods remain for compatibility and require hardening before public deployment. A lease token fences SQLite state transitions, not in-flight DNS server writes. There is no scheduler, automatic recovery loop or compare-and-swap for existing RRsets. No production readiness is claimed.
+A still-active lease cannot be requeued or marked verified. Expired operations remain ambiguous and require authoritative DNS reconciliation; expiration alone never triggers a publish. Interrupted network operations may outlive their local leases, so SQLite fencing does not fence DNS writes at the authoritative server.
+
+This is an incremental safety improvement, not a production recovery scheduler. Heartbeats for long-running writes, atomic compare-and-swap for existing RRsets, retry scheduling, reliable audit logging, and stronger failure injection remain outstanding.

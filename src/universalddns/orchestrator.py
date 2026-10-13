@@ -6,10 +6,13 @@ from .adapters.sqlite_intents import SQLiteIntentJournal
 
 
 class UpdateOrchestrator:
-    def __init__(self, authorizer: Authorizer, journal: SQLiteIntentJournal, backend: DNSBackend):
+    def __init__(self, authorizer: Authorizer, journal: SQLiteIntentJournal, backend: DNSBackend, *, lease_seconds: int = 30):
         self._authorizer = authorizer
         self._journal = journal
         self._backend = backend
+        if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
+            raise ValueError('invalid lease duration')
+        self._lease_seconds = lease_seconds
 
     def submit(self, principal_id: str, rrset: RecordSet, request_key: str | None = None):
         if not self._authorizer.may_update(principal_id, rrset):
@@ -20,7 +23,7 @@ class UpdateOrchestrator:
 
     def apply(self, identifier: str):
         intent = self._journal.get(identifier)
-        token = self._journal.claim_owned(identifier)
+        token = self._journal.claim_with_lease(identifier, lease_seconds=self._lease_seconds)
         if token is None:
             raise UpdateConflict("intent is not pending")
         try:

@@ -128,15 +128,8 @@ class SQLiteIntentJournal:
         return tuple(self.get(identifier) for (identifier,) in ids)
 
     def claim_owned(self, identifier: str) -> str | None:
-        """Claim a pending intent with a fresh fencing token."""
-        token = str(uuid4())
-        with self._db:
-            cur = self._db.execute(
-                "UPDATE update_intents SET state='applying',owner_token=? "
-                "WHERE identifier=? AND state='pending'",
-                (token, identifier),
-            )
-            return token if cur.rowcount == 1 else None
+        """Compatibility alias: uses a bounded lease."""
+        return self.claim_with_lease(identifier)
 
     def finish_owned(
         self, identifier: str, token: str, *, succeeded: bool,
@@ -156,25 +149,20 @@ class SQLiteIntentJournal:
                 raise UpdateConflict("worker no longer owns intent")
 
     def claim(self, identifier: str) -> bool:
-        with self._db:
-            cur = self._db.execute("""UPDATE update_intents SET state='applying'
-                WHERE identifier=? AND state='pending'""", (identifier,))
-            return cur.rowcount == 1
+        """Legacy API disabled: claims must be owned and leased."""
+        raise UpdateConflict("use claim_with_lease instead")
 
     def finish(self, identifier: str, *, succeeded: bool, error: str | None = None) -> None:
-        state = "applied" if succeeded else "failed"
-        with self._db:
-            cur = self._db.execute("""UPDATE update_intents SET state=?,error=?
-                WHERE identifier=? AND state='applying'""",
-                (state, None if succeeded else (error or "backend failure"), identifier))
-            if cur.rowcount != 1:
-                raise UpdateConflict("intent not in applying state")
+        """Legacy unfenced completion forbidden."""
+        raise UpdateConflict("use finish_owned instead")
 
     def mark_verified(self, identifier: str) -> None:
         """Conclude an ambiguous attempt after an authoritative observation."""
         with self._db:
-            cur = self._db.execute("""UPDATE update_intents SET state='applied',error=NULL
-                WHERE identifier=? AND state IN ('applying','failed')""", (identifier,))
+            cur = self._db.execute("""UPDATE update_intents SET state='applied',error=NULL,owner_token=NULL,lease_expires_at=NULL
+                WHERE identifier=? AND state IN ('applying','failed')
+                    AND (state='failed' OR lease_expires_at IS NULL
+                    OR lease_expires_at<=CAST(strftime('%s','now') AS INTEGER))""", (identifier,))
             if cur.rowcount != 1:
                 raise UpdateConflict("intent is not unresolved")
 
