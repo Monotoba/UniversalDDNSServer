@@ -27,9 +27,12 @@ class SQLiteIntentJournal:
                 error TEXT,
                 request_key TEXT,
                 owner_token TEXT,
+                lease_expires_at INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
             columns = {r[1] for r in self._db.execute("PRAGMA table_info(update_intents)")}
+            if "lease_expires_at" not in columns:
+                self._db.execute("ALTER TABLE update_intents ADD COLUMN lease_expires_at INTEGER")
             if "owner_token" not in columns:
                 self._db.execute("ALTER TABLE update_intents ADD COLUMN owner_token TEXT")
             if "request_key" not in columns:
@@ -89,6 +92,41 @@ class SQLiteIntentJournal:
                             RecordSet(zone, name, kind, ttl, tuple(json.loads(values))),
                             UpdateState(state), error)
 
+    def claim_with_lease(self, identifier: str, *, lease_seconds: int = 30) -> str | None:
+        """Claim pending work atomically with a persisted deadline."""
+        if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
+            raise ValueError("invalid lease duration")
+        token = str(uuid4())
+        with self._db:
+            result = self._db.execute(
+                "UPDATE update_intents SET state='applying',owner_token=?, "
+                "lease_expires_at=CAST(strftime('%s','now') AS INTEGER)+? "
+                "WHERE identifier=? AND state='pending'",
+                (token, lease_seconds, identifier),
+            )
+            return token if result.rowcount == 1 else None
+
+    def renew_lease(self, identifier: str, token: str, *, lease_seconds: int = 30) -> None:
+        if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
+            raise ValueError("invalid lease duration")
+        with self._db:
+            result = self._db.execute(
+                "UPDATE update_intents SET lease_expires_at=CAST(strftime('%s','now') AS INTEGER)+? "
+                "WHERE identifier=? AND owner_token=? AND state='applying' "
+                "AND lease_expires_at>CAST(strftime('%s','now') AS INTEGER)",
+                (lease_seconds, identifier, token),
+            )
+            if result.rowcount != 1:
+                raise UpdateConflict("expired lease or stale worker")
+
+    def expired_leases(self) -> tuple[UpdateIntent, ...]:
+        ids = self._db.execute(
+            "SELECT identifier FROM update_intents WHERE state='applying' "
+            "AND lease_expires_at IS NOT NULL "
+            "AND lease_expires_at<=CAST(strftime('%s','now') AS INTEGER)"
+        ).fetchall()
+        return tuple(self.get(identifier) for (identifier,) in ids)
+
     def claim_owned(self, identifier: str) -> str | None:
         """Claim a pending intent with a fresh fencing token."""
         token = str(uuid4())
@@ -108,8 +146,9 @@ class SQLiteIntentJournal:
         state = "applied" if succeeded else "failed"
         with self._db:
             cur = self._db.execute(
-                "UPDATE update_intents SET state=?,error=?,owner_token=NULL "
-                "WHERE identifier=? AND state='applying' AND owner_token=?",
+                "UPDATE update_intents SET state=?,error=?,owner_token=NULL,lease_expires_at=NULL "
+                "WHERE identifier=? AND state='applying' AND owner_token=? "
+                "AND (lease_expires_at IS NULL OR lease_expires_at>CAST(strftime('%s','now') AS INTEGER))",
                 (state, None if succeeded else (error or "backend failure"),
                  identifier, token),
             )
@@ -143,7 +182,7 @@ class SQLiteIntentJournal:
         """Explicit retry, only after caller has checked authoritative state."""
         try:
             with self._db:
-                cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL,owner_token=NULL
+                cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL,owner_token=NULL,lease_expires_at=NULL
                     WHERE identifier=? AND state IN ('applying','failed')""", (identifier,))
                 if cur.rowcount != 1:
                     raise UpdateConflict("intent cannot be retried")
