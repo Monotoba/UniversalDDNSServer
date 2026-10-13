@@ -1,17 +1,17 @@
 # Changelog
 
-All notable changes will be recorded here. No stable release exists.
+All notable changes are recorded here. No stable release exists.
 
 ## [Unreleased]
 ### Added
-- Authorization-gated update orchestration with core-owned backend interfaces.
-- Durable SQLite update-intent journal with pending/applying/applied/failed states.
-- Partial unique index preventing competing active updates to the same RRset.
-- Tests for denied requests, application, backend failure and crash-ambiguous state.
-- ADR-0002, Python domain model, SQLite desired-state adapter and core tests.
+- RFC 2136/TSIG TCP update adapter for A/AAAA resource record sets using dnspython.
+- Signed update construction, cross-zone restriction, error handling, and unit tests.
+- Authorization-gated update orchestration and SQLite update-intent journal.
+- Python 3.11+ domain model, ports, desired-state storage and tests.
 
-### Limitations
-- No operational HTTP/DDNS server or real DNS backend; no automatic recovery of applying intents, per-client idempotency, or production credentials.
+### Outstanding
+- No HTTP/DDNS server, production worker, real authoritative-server integration test,
+  automatic uncertain-state reconciliation, client authentication or deployment release.
 
 ## [0.0.0-design] — 2026-10-13
-Initial design baseline and OSS policies.
+Initial architecture and project documentation.
