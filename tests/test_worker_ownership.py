@@ -1,4 +1,5 @@
 import tempfile
+import sqlite3
 import unittest
 from pathlib import Path
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
@@ -17,6 +18,8 @@ class WorkerOwnershipTests(unittest.TestCase):
                 self.assertIsNone(second.claim_owned(intent.identifier))
                 with self.assertRaises(UpdateConflict):
                     second.finish_owned(intent.identifier, "wrong-token", succeeded=True)
+                with sqlite3.connect(path) as db:
+                    db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (intent.identifier,))
                 first.requeue(intent.identifier)
                 second_token = second.claim_owned(intent.identifier)
                 self.assertNotEqual(first_token, second_token)

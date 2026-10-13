@@ -1,4 +1,5 @@
 import tempfile
+import sqlite3
 import unittest
 from pathlib import Path
 
@@ -66,7 +67,9 @@ class RecoveryTests(unittest.TestCase):
 
     def test_interrupted_claim_reconciles_after_reopen(self):
         attempt = self.svc.submit("client", self.rr)
-        self.journal.claim(attempt.identifier)
+        self.journal.claim_with_lease(attempt.identifier)
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (attempt.identifier,))
         self.backend.current = self.rr
         self.journal.close()
         self.journal = SQLiteIntentJournal(self.path)
@@ -75,7 +78,9 @@ class RecoveryTests(unittest.TestCase):
 
     def test_mismatch_not_retried_without_explicit_request(self):
         attempt = self.svc.submit("client", self.rr)
-        self.journal.claim(attempt.identifier)
+        self.journal.claim_with_lease(attempt.identifier)
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (attempt.identifier,))
         self.assertEqual(self.svc.reconcile(attempt.identifier).state, UpdateState.APPLYING)
         self.assertEqual(self.backend.calls, 0)
         self.assertEqual(self.svc.reconcile(attempt.identifier, retry=True).state, UpdateState.APPLIED)
@@ -83,7 +88,9 @@ class RecoveryTests(unittest.TestCase):
 
     def test_revocation_prevents_retry(self):
         attempt = self.svc.submit("client", self.rr)
-        self.journal.claim(attempt.identifier)
+        self.journal.claim_with_lease(attempt.identifier)
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (attempt.identifier,))
         self.policy.allowed = False
         with self.assertRaises(PermissionDenied):
             self.svc.reconcile(attempt.identifier, retry=True)

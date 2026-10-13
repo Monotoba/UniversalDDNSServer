@@ -171,7 +171,9 @@ class SQLiteIntentJournal:
         try:
             with self._db:
                 cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL,owner_token=NULL,lease_expires_at=NULL
-                    WHERE identifier=? AND state IN ('applying','failed')""", (identifier,))
+                    WHERE identifier=? AND state IN ('applying','failed')
+                    AND (state='failed' OR lease_expires_at IS NULL
+                    OR lease_expires_at<=CAST(strftime('%s','now') AS INTEGER))""", (identifier,))
                 if cur.rowcount != 1:
                     raise UpdateConflict("intent cannot be retried")
         except sqlite3.IntegrityError as exc:
