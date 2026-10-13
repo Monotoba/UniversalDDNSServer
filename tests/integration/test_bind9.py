@@ -101,6 +101,17 @@ class Bind9IntegrationTests(unittest.TestCase):
         backend.publish(replacement)
         self.assertEqual(backend.observe(replacement), replacement)
 
+    def test_atomic_create_only_does_not_overwrite_existing_rrset(self):
+        backend = self.backend()
+        original = RecordSet("example.test", "onlyonce.example.test", "A",
+                             120, ("192.0.2.30",))
+        overwrite = RecordSet("example.test", "onlyonce.example.test", "A",
+                              120, ("192.0.2.31",))
+        backend.publish_if_absent(original)
+        with self.assertRaises(Exception):
+            backend.publish_if_absent(overwrite)
+        self.assertEqual(backend.observe(original), original)
+
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
         record = RecordSet("example.test", "denied.example.test",

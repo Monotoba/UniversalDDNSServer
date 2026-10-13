@@ -51,7 +51,7 @@ class RFC2136Config:
 
 
 class RFC2136Backend:
-    capabilities = BackendCapabilities(frozenset({"A", "AAAA"}), supports_prerequisites=False)
+    capabilities = BackendCapabilities(frozenset({"A", "AAAA"}), supports_prerequisites=True)
 
     def __init__(self, config: RFC2136Config, *, transport: Callable | None = None):
         self._config = config
@@ -73,6 +73,29 @@ class RFC2136Backend:
             raise DNSPublicationError("DNS update transport failed") from exc
         if response.rcode() != dns.rcode.NOERROR:
             raise DNSPublicationError(f"DNS update rejected: {dns.rcode.to_text(response.rcode())}")
+
+    def publish_if_absent(self, rrset: RecordSet) -> None:
+        """Atomically insert only if the RRset does not already exist.
+
+        This is a narrow RFC 2136 prerequisite, not a general compare-and-swap.
+        """
+        if rrset.zone != self._config.zone:
+            raise ValueError("RRset is outside configured backend zone")
+        update = dns.update.Update(
+            self._config.zone, keyring=self._keyring,
+            keyname=self._config.key_name, keyalgorithm=self._config.key_algorithm,
+        )
+        update.absent(rrset.name, rrset.record_type)
+        update.add(rrset.name, rrset.ttl, rrset.record_type, *rrset.values)
+        try:
+            response = self._transport(update, self._config.server,
+                                       port=self._config.port, timeout=self._config.timeout)
+        except (dns.exception.DNSException, OSError) as exc:
+            raise DNSPublicationError("conditional DNS update transport failed") from exc
+        if response.rcode() != dns.rcode.NOERROR:
+            raise DNSPublicationError(
+                f"conditional DNS update rejected: {dns.rcode.to_text(response.rcode())}"
+            )
 
     def observe(self, rrset: RecordSet) -> RecordSet | None:
         """Return authoritative RRset or None when *authoritatively* absent.

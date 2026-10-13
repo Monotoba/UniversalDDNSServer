@@ -4,6 +4,8 @@ All notable changes are recorded here. No stable release exists.
 
 ## [Unreleased]
 ### Added
+- Worker-token fencing for SQLite intent completion and regression tests.
+- RFC 2136 create-only prerequisite operation with BIND 9 integration coverage.
 - Isolated BIND 9 authoritative server integration tests for signed A/AAAA RRset publication.
 - Authoritative RRset observation, restart reconciliation and opt-in verified retries.
 - Persisted per-principal idempotency keys with payload conflict detection.
