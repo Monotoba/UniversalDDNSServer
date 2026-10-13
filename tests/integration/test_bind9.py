@@ -1,5 +1,6 @@
 """Ephemeral local BIND 9 integration; never queries or changes public DNS."""
 import base64
+import os
 import shutil
 import socket
 import subprocess
@@ -16,7 +17,7 @@ from universalddns.adapters.rfc2136 import RFC2136Backend, RFC2136Config
 from universalddns.domain import RecordSet
 
 
-@unittest.skipUnless(shutil.which("named"), "BIND 9 named executable required")
+@unittest.skipUnless(shutil.which(os.environ.get("DDNS_NAMED_BIN", "named")), "BIND 9 named executable required")
 class Bind9IntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -42,7 +43,7 @@ class Bind9IntegrationTests(unittest.TestCase):
         )
         cls.named_log = (root / "named.log").open("w+", encoding="utf-8")
         cls.proc = subprocess.Popen(
-            ["named", "-g", "-c", str(conf), "-p", str(cls.port)],
+            [os.environ.get("DDNS_NAMED_BIN", "named"), "-g", "-c", str(conf), "-p", str(cls.port)],
             stdout=cls.named_log, stderr=subprocess.STDOUT,
         )
         try:
