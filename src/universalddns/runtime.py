@@ -35,6 +35,10 @@ def load_settings(config_path: str | Path) -> Settings:
     credentials = Path(data["credentials"])
     if not database.is_absolute() or not credentials.is_absolute():
         raise ValueError("database and credentials paths must be absolute")
+    if database.is_symlink() or credentials.is_symlink():
+        raise ValueError("database and credential symlinks are not supported")
+    if not database.parent.is_dir():
+        raise ValueError("database parent directory must exist")
     if not credentials.is_file():
         raise ValueError("DNS credential file missing")
     if credentials.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO):
