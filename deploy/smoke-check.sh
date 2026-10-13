@@ -2,16 +2,17 @@
 # Local-only pre-alpha API smoke test. Does not send DNS updates.
 set -eu
 BASE_URL="${1:-http://127.0.0.1:8765}"
-case "$BASE_URL" in
-  http://127.0.0.1:*|http://localhost:*) ;;
-  *) echo "Refusing non-loopback URL" >&2; exit 2 ;;
-esac
 python3 - "$BASE_URL" <<'PY'
 import json
 import sys
 import urllib.request
+import urllib.error
+import urllib.parse
 
 url = sys.argv[1].rstrip("/")
+parsed = urllib.parse.urlsplit(url)
+if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost") or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment:
+    raise SystemExit("Refusing non-loopback API URL")
 with urllib.request.urlopen(url + "/health/live", timeout=5) as response:
     data = json.load(response)
     assert response.status == 200 and data == {"status": "live"}, data
