@@ -40,14 +40,16 @@ class Bind9IntegrationTests(unittest.TestCase):
             'update-policy { grant ddns-key. zonesub A AAAA; }; };\n',
             encoding="utf-8",
         )
+        cls.named_log = (root / "named.log").open("w+", encoding="utf-8")
         cls.proc = subprocess.Popen(
             ["named", "-g", "-c", str(conf), "-p", str(cls.port)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+            stdout=cls.named_log, stderr=subprocess.STDOUT,
         )
         try:
             for _ in range(60):
                 if cls.proc.poll() is not None:
-                    raise RuntimeError("isolated named exited before becoming ready")
+                    cls.named_log.flush()
+                    raise RuntimeError("isolated named exited: " + (root / "named.log").read_text()[-4000:])
                 try:
                     response = dns.query.tcp(
                         dns.message.make_query("example.test", "SOA"),
