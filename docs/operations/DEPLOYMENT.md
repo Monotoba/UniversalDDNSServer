@@ -33,6 +33,10 @@ To revoke a token, pipe it into the local admin command with `revoke --token-std
 
 Install `deploy/universalddns-api.service` and `deploy/universalddns-worker.service` into `/etc/systemd/system/`, then run `systemctl daemon-reload`. For a controlled local experiment, enable and start the API and worker separately. Inspect service logs using `journalctl -u universalddns-api` and `journalctl -u universalddns-worker`. The API binds only to 127.0.0.1:8765; the worker runs independently.
 
+## Local acceptance checks
+
+Run `deploy/smoke-check.sh` from the checkout after the API service starts. It checks loopback liveness and confirms that an unauthenticated intent query returns HTTP 401. This smoke check **does not modify DNS** and is not a substitute for a host systemd installation test. Verify systemd unit syntax with `systemd-analyze verify` and inspect `systemctl status universalddns-api universalddns-worker` on the target machine. To verify actual publication, use a disposable test zone and confirm the intended A/AAAA RRset directly at its authoritative nameserver. Do not run this against live production zones.
+
 ## Limitations
 
 No production TLS reverse-proxy guide or security approval exists, and systemd deployment itself has not been exercised on a real installed host. The process-local rate limiter does not provide distributed throttling; worker backoff, audit retention, mature credentials handling, and a safe policy for competing authoritative writers are incomplete. Test SQLite backups and restore separately. The DNS operation may succeed even if the worker fails to record completion, requiring authoritative reconciliation. Do not use a residential IP as the sole public authoritative DNS infrastructure. DDNS records do not resolve CGNAT or firewall ingress constraints.
