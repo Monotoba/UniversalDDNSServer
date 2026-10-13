@@ -12,7 +12,7 @@ import dns.message
 import dns.query
 import dns.rcode
 
-from universalddns.adapters.rfc2136 import RFC2136Backend, RFC2136Config, DNSPublicationError
+from universalddns.adapters.rfc2136 import RFC2136Backend, RFC2136Config
 from universalddns.domain import RecordSet
 
 
@@ -55,7 +55,7 @@ class Bind9IntegrationTests(unittest.TestCase):
                     )
                     if response.rcode() == dns.rcode.NOERROR:
                         break
-                except (OSError, Exception):
+                except Exception:
                     time.sleep(0.1)
             else:
                 raise RuntimeError("isolated named did not become ready")
