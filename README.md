@@ -1,6 +1,9 @@
 # UniversalDDNSServer
 
+[![CI](https://github.com/Monotoba/UniversalDDNSServer/actions/workflows/docs.yml/badge.svg?branch=main)](https://github.com/Monotoba/UniversalDDNSServer/actions/workflows/docs.yml)
 [![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-green)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![Status: Pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange)](docs/IMPLEMENTATION_PLAN.md)
 
 **Pre-alpha:** Modular open-source, self-hostable DDNS management platform. **There is no operational DDNS/HTTP server yet.**
 
@@ -9,9 +12,10 @@
 - Versioned core ports: DNS backends, state repositories, authorization and events.
 - SQLite desired-state repository and durable update-intent journal.
 - Authorization-gated `UpdateOrchestrator` and state transitions (`pending`, `applying`, `applied`, `failed`).
+- RFC 2136/TSIG A/AAAA DNS publishing backend using dnspython, with simulated-transport protocol tests.
 - Unit tests and GitHub Actions test matrix.
 
-**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; automatic retry, credentials, DNS publishing, HTTPS API and production deployment are not implemented.
+**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; automatic retry, client authentication, an operational DNS publishing worker, HTTPS API and production deployment are not implemented. The RFC 2136 adapter has not yet been integration-tested against a live authoritative DNS server.
 
 ## Test the core
 
