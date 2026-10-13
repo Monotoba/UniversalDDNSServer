@@ -1,0 +1,19 @@
+[Unit]
+Description=UniversalDDNSServer local API (pre-alpha)
+After=network.target
+[Service]
+Type=simple
+User=universalddns
+Group=universalddns
+Environment=UNIVERSALDDNS_CONFIG=/etc/universalddns/config.json
+WorkingDirectory=/var/lib/universalddns
+ExecStart=/opt/universalddns/venv/bin/uvicorn universalddns.runtime:api_app --factory --host 127.0.0.1 --port 8765 --workers 1 --no-access-log
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/universalddns
+UMask=0077
+[Install]
+WantedBy=multi-user.target

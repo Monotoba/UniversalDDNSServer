@@ -1,0 +1,14 @@
+{
+  "database": "/var/lib/universalddns/state.sqlite3",
+  "credentials": "/etc/universalddns/tsig.json",
+  "dns": {
+    "zone": "example.test",
+    "server": "127.0.0.1",
+    "port": 53,
+    "key_name": "ddns-key."
+  },
+  "interval": 2.0,
+  "records": {
+    "home": {"name": "home.example.test", "type": "A", "ttl": 120, "address": "192.0.2.1"}
+  }
+}
