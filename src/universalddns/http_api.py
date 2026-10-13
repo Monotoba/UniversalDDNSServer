@@ -1,0 +1,153 @@
+"""Pre-alpha authenticated HTTP intake; DNS network writes belong to workers."""
+import hashlib
+import hmac
+import logging
+import re
+import time
+from dataclasses import dataclass
+from threading import Lock
+from typing import Callable
+
+from fastapi import FastAPI, Header, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
+
+from .adapters.sqlite_intents import SQLiteIntentJournal
+from .domain import RecordSet
+from .intents import UpdateConflict, UnknownIntent
+from .orchestrator import UpdateOrchestrator
+
+log = logging.getLogger("universalddns.audit")
+_KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+@dataclass(frozen=True)
+class APIPrincipal:
+    identifier: str
+    token_sha256: str
+    scopes: frozenset[str]
+    record_ids: frozenset[str]
+
+    @staticmethod
+    def from_token(identifier: str, token: str, scopes: frozenset[str],
+                   record_ids: frozenset[str]) -> "APIPrincipal":
+        if len(token) < 32:
+            raise ValueError("API token must be at least 32 characters")
+        return APIPrincipal(identifier, hashlib.sha256(token.encode()).hexdigest(),
+                            scopes, record_ids)
+
+
+class RecordAddress(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    address: str = Field(min_length=3, max_length=45)
+    request_id: str = Field(min_length=1, max_length=128)
+
+
+class RateGate:
+    """Process-local fixed-window limit; not a distributed production limiter."""
+
+    def __init__(self, limit: int = 60, seconds: int = 60):
+        if limit < 1 or seconds < 1:
+            raise ValueError("invalid rate limit")
+        self.limit, self.seconds = limit, seconds
+        self._lock = Lock()
+        self._hits: dict[str, tuple[int, int]] = {}
+
+    def allow(self, identifier: str) -> bool:
+        now = int(time.monotonic() // self.seconds)
+        with self._lock:
+            window, count = self._hits.get(identifier, (-1, 0))
+            if window != now:
+                count = 0
+            if count >= self.limit:
+                return False
+            self._hits[identifier] = (now, count + 1)
+            return True
+
+
+def create_app(
+    journal_factory: Callable[[], SQLiteIntentJournal],
+    orchestrator_factory: Callable[[SQLiteIntentJournal], UpdateOrchestrator],
+    records: dict[str, RecordSet],
+    principals: tuple[APIPrincipal, ...],
+    *,
+    rate_limit: int = 60,
+) -> FastAPI:
+    """Create an API using server-owned record mapping and token-hash configuration.
+
+    Each request receives a fresh SQLite connection; worker execution is not exposed.
+    """
+    if not principals or not records:
+        raise ValueError("API requires configured principals and managed records")
+    if len({p.identifier for p in principals}) != len(principals):
+        raise ValueError("duplicate principal")
+    gate = RateGate(rate_limit)
+    app = FastAPI(title="UniversalDDNSServer", version="0.1.0-prealpha")
+
+    def authenticated(request: Request, authorization: str | None, scope: str) -> APIPrincipal:
+        token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        identity = None
+        for p in principals:
+            if hmac.compare_digest(p.token_sha256, digest):
+                identity = p
+        if identity is None:
+            raise HTTPException(401, "authentication required", headers={"WWW-Authenticate": "Bearer"})
+        if not gate.allow(identity.identifier):
+            raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": "60"})
+        if scope not in identity.scopes:
+            raise HTTPException(403, "insufficient scope")
+        request.state.principal_id = identity.identifier
+        return identity
+
+    @app.get("/health/live")
+    def live():
+        return {"status": "live"}
+
+    @app.put("/api/v1/records/{record_id}/address", status_code=202)
+    def update(record_id: str, body: RecordAddress, request: Request,
+               authorization: str | None = Header(default=None)):
+        principal = authenticated(request, authorization, "records:write")
+        if record_id not in records or record_id not in principal.record_ids:
+            raise HTTPException(404, "record not found")
+        if not _KEY.fullmatch(body.request_id):
+            raise HTTPException(422, "invalid request id")
+        template = records[record_id]
+        try:
+            rrset = RecordSet(template.zone, template.name, template.record_type,
+                              template.ttl, (body.address,))
+        except ValueError as exc:
+            raise HTTPException(422, "invalid address for record type") from exc
+        with journal_factory() as journal:
+            try:
+                intent = orchestrator_factory(journal).submit(
+                    principal.identifier, rrset, request_key=body.request_id)
+            except UpdateConflict as exc:
+                raise HTTPException(409, "conflicting update") from exc
+            except ValueError as exc:
+                raise HTTPException(422, "invalid update") from exc
+            except Exception as exc:
+                from .intents import PermissionDenied
+                if isinstance(exc, PermissionDenied):
+                    raise HTTPException(403, "update not permitted") from exc
+                raise
+        log.info("update_submitted principal=%s record=%s intent=%s",
+                 principal.identifier, record_id, intent.identifier)
+        return {"intent_id": intent.identifier, "status": intent.state.value}
+
+    @app.get("/api/v1/intents/{intent_id}")
+    def status(intent_id: str, request: Request,
+               authorization: str | None = Header(default=None)):
+        principal = authenticated(request, authorization, "intents:read")
+        with journal_factory() as journal:
+            try:
+                intent = journal.get(intent_id)
+            except UnknownIntent as exc:
+                raise HTTPException(404, "intent not found") from exc
+        if intent.principal_id != principal.identifier or not any(
+            rid in principal.record_ids and records[rid].key == intent.rrset.key
+            for rid in records
+        ):
+            raise HTTPException(404, "intent not found")
+        return {"intent_id": intent.identifier, "status": intent.state.value}
+
+    return app

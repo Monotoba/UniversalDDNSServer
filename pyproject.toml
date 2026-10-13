@@ -13,7 +13,8 @@ license = {file = "LICENSE"}
 authors = [{name = "R. Morgan"}]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.9,<1", "mypy>=1.15,<2"]
+api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+dev = ["ruff>=0.9,<1", "mypy>=1.15,<2", "fastapi>=0.115,<1", "httpx>=0.27,<1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -31,4 +32,3 @@ python_version = "3.11"
 files = ["src/universalddns/domain.py", "src/universalddns/ports.py"]
 show_error_codes = true
 warn_unused_ignores = true
-# Scope is deliberately limited until all infrastructure adapters have typed signatures.
