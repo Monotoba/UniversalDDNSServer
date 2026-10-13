@@ -63,7 +63,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(self.journal.pending()[0].identifier, intent.identifier)
     def test_interrupted_requires_manual_reconciliation(self):
         intent = self.svc.submit("allowed", self.record)
-        self.assertTrue(self.journal.claim(intent.identifier))
+        self.assertIsNotNone(self.journal.claim_with_lease(intent.identifier))
         self.assertEqual(self.journal.interrupted()[0].state, UpdateState.APPLYING)
         with self.assertRaises(UpdateConflict):
             self.svc.submit("allowed", self.record)
