@@ -1,55 +1,39 @@
 # UniversalDDNSServer
 
-[![Status: design phase](https://img.shields.io/badge/status-design%20phase-blue)](docs/IMPLEMENTATION_PLAN.md) [![License: BSD--2--Clause](https://img.shields.io/badge/license-BSD--2--Clause-green)](LICENSE)
+[![License: BSD-2-Clause](https://img.shields.io/badge/license-BSD--2--Clause-green)](LICENSE)
 
-**UniversalDDNSServer** is a modular, self-hosted, open-source Dynamic DNS (DDNS) management service. **Design phase only:** no functional server, published binaries, or deployment packages are available yet.
+**Pre-alpha development:** A modular, self-hostable, open-source Dynamic DNS management platform. **There is no operational DDNS/HTTP server yet.** The repository currently contains a validated A/AAAA record-set model, core adapter interfaces, SQLite desired-state storage, unit tests and architectural documentation.
 
-## Goals
+## Features implemented
+- Python 3.11+ domain models: canonical hostname/zone checks, IPv4/IPv6 validation, RRset value normalization, TTL validation.
+- Versioned contracts for DNS provider, persistence, authorization and event adapters (`typing.Protocol`).
+- SQLite transactional desired-state persistence, get/put/delete, no-op detection and schema-version guard.
+- Automated unit tests and GitHub Actions CI matrix.
 
-- Authenticated updates of IPv4 (A) and IPv6 (AAAA) records for multiple devices.
-- Versioned HTTPS API and optional DynDNS2-compatible protocol adapter.
-- Replaceable DNS backends, beginning with RFC 2136 using TSIG.
-- Lightweight SQLite persistence and independent audit/event interfaces.
-- Per-host authorization, idempotent updates, robust error handling, and thorough tests.
-- Modular core with stable internal ports and optional extensibility through trusted adapters/plugins.
-- Native Linux deployment and optional container packaging.
-- Independent integration with [UDDNSUpdater](https://github.com/Monotoba/UDDNSUpdater).
+## Planned
+Authenticated HTTPS REST v1 DDNS updates; RFC 2136/TSIG publication; per-record authorization; durable update/outbox tracking; DynDNS2 compatibility; optional adapters/plugins; web management UI; additional DNS record types.
 
-## Architecture
+## Development quick start
 
-```text
-Clients / UDDNSUpdater / Routers
-        | HTTPS REST v1 or DynDNS2
-        v
-   Authentication + Authorization
-        |
-   Update Orchestrator
-   |         |          |
-DNS Adapter  State Store  Audit/Events
-   |
-RFC 2136 / Provider API
-   |
-Existing authoritative DNS infrastructure
+```sh
+git clone https://github.com/Monotoba/UniversalDDNSServer.git
+cd UniversalDDNSServer
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-DNS providers, persistence, update transports, and notifications interact through **core-owned versioned interfaces**, not implementation-specific dependencies. Third-party plugins are optional and never bypass authorization. The first release uses established DNS infrastructure; it does not implement an authoritative DNS server.
+These commands **install and test the core library**; they do not start a DDNS server. For a dependency-minimal source checkout use `PYTHONPATH=src python -m unittest discover -s tests -v`.
 
-## Design documentation
-
+## Documentation
 - [Project proposal](docs/PROJECT_PROPOSAL.md)
 - [Design specification](docs/DESIGN_SPEC.md)
-- [Implementation roadmap](docs/IMPLEMENTATION_PLAN.md)
-- [Architecture](docs/architecture/ARCHITECTURE.md)
-- [Threat model](docs/architecture/THREAT_MODEL.md)
-- [API](docs/dev/API.md)
-- [Internal contracts](docs/dev/INTERFACES.md)
-- [Plugin design](docs/dev/PLUGINS.md)
-- [Development guide](docs/dev/DEVELOPMENT.md)
-- [Testing strategy](docs/dev/TESTING.md)
-- [Deployment notes](docs/operations/DEPLOYMENT.md)
-
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md).
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+- [ADR-0001 modular core](docs/architecture/ADR-0001-MODULAR-CORE.md)
+- [ADR-0002 language and framework](docs/architecture/ADR-0002-LANGUAGE-FRAMEWORK.md)
+- [Current core implementation](docs/dev/CORE_IMPLEMENTATION.md)
+- [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md) · [API draft](docs/dev/API.md)
+- [Threat model](docs/architecture/THREAT_MODEL.md) · [Tests](docs/dev/TESTING.md)
+- [Contribution guide](CONTRIBUTING.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 ## License
-
-Copyright (c) 2026 R. Morgan and contributors. Distributed under the [BSD 2-Clause License](LICENSE) (`BSD-2-Clause`). Redistributions must retain the applicable copyright and license notices and disclaimer as set out in the license. No additional advertising requirement is imposed.
+Copyright (c) 2026 R. Morgan. [BSD 2-Clause](LICENSE): preserve applicable copyright, license and disclaimer notices in redistributions; no additional advertising requirement.

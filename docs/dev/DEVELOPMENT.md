@@ -1,21 +1,22 @@
 # Development guide
 
-The repository is currently a design baseline; no server build or runtime command exists.
+UniversalDDNSServer currently implements a Python domain and SQLite desired-state adapter, **not** a live DNS server.
 
-## Workflow
-- Propose interface changes via GitHub issue and ADR.
-- Work in focused branches and preserve existing behavior when refactoring.
-- Develop by module, with mock ports and independent conformance suites.
-- Add regression, authorization-negative and failure-recovery tests to each change.
-- Run formatting, static checks, unit, integration and documentation validation tests.
-- Update README, implementation plan and CHANGELOG before merge.
-- Commit locally using descriptive messages; open a PR and wait for CI.
+## Setup
+Requires Python 3.11+.
 
-## Initial layout (planned)
-```text
-src/universalddns/{api,auth,domain,orchestration,ports,adapters,events}
-tests/{unit,integration,contracts,security}
-docs/{architecture,dev,operations,standards}
+```sh
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-Runtime language/framework selection is deferred to its own ADR to avoid premature constraints.
+A dependency-minimal checkout may instead run `PYTHONPATH=src python -m unittest discover -s tests -v`.
+
+## Modular development rules
+- Core-owned ports are in `src/universalddns/ports.py`; domain in `domain.py`; infrastructure in `adapters/`.
+- No provider-specific or HTTP dependencies inside the domain.
+- Preserve existing behavior when refactoring; add unit, contract and regression tests for each change.
+- Validate version compatibility before loading optional plugins. Never assume in-process plugins are sandboxed.
+- Open focused branches; commit with descriptive messages; update changelog and API docs; require green CI.
+
+Read [core implementation](CORE_IMPLEMENTATION.md), [interfaces](INTERFACES.md), [plugins](PLUGINS.md) and [ADR-0002](../architecture/ADR-0002-LANGUAGE-FRAMEWORK.md).
