@@ -25,7 +25,7 @@ class DocumentationTests(unittest.TestCase):
 
     def test_status_is_explicit(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("no operational DDNS/HTTP server yet", readme.lower())
+        self.assertIn("no operational ddns/http server yet", readme.lower())
 
 
 if __name__ == "__main__":
