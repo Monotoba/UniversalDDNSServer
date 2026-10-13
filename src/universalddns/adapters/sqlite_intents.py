@@ -26,9 +26,12 @@ class SQLiteIntentJournal:
                 state TEXT NOT NULL CHECK (state IN ('pending','applying','applied','failed')),
                 error TEXT,
                 request_key TEXT,
+                owner_token TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
             columns = {r[1] for r in self._db.execute("PRAGMA table_info(update_intents)")}
+            if "owner_token" not in columns:
+                self._db.execute("ALTER TABLE update_intents ADD COLUMN owner_token TEXT")
             if "request_key" not in columns:
                 self._db.execute("ALTER TABLE update_intents ADD COLUMN request_key TEXT")
             self._db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS one_active_intent_per_rrset
@@ -86,6 +89,33 @@ class SQLiteIntentJournal:
                             RecordSet(zone, name, kind, ttl, tuple(json.loads(values))),
                             UpdateState(state), error)
 
+    def claim_owned(self, identifier: str) -> str | None:
+        """Claim a pending intent with a fresh fencing token."""
+        token = str(uuid4())
+        with self._db:
+            cur = self._db.execute(
+                "UPDATE update_intents SET state='applying',owner_token=? "
+                "WHERE identifier=? AND state='pending'",
+                (token, identifier),
+            )
+            return token if cur.rowcount == 1 else None
+
+    def finish_owned(
+        self, identifier: str, token: str, *, succeeded: bool,
+        error: str | None = None,
+    ) -> None:
+        """Prevent stale workers from completing another worker's claim."""
+        state = "applied" if succeeded else "failed"
+        with self._db:
+            cur = self._db.execute(
+                "UPDATE update_intents SET state=?,error=?,owner_token=NULL "
+                "WHERE identifier=? AND state='applying' AND owner_token=?",
+                (state, None if succeeded else (error or "backend failure"),
+                 identifier, token),
+            )
+            if cur.rowcount != 1:
+                raise UpdateConflict("worker no longer owns intent")
+
     def claim(self, identifier: str) -> bool:
         with self._db:
             cur = self._db.execute("""UPDATE update_intents SET state='applying'
@@ -113,7 +143,7 @@ class SQLiteIntentJournal:
         """Explicit retry, only after caller has checked authoritative state."""
         try:
             with self._db:
-                cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL
+                cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL,owner_token=NULL
                     WHERE identifier=? AND state IN ('applying','failed')""", (identifier,))
                 if cur.rowcount != 1:
                     raise UpdateConflict("intent cannot be retried")

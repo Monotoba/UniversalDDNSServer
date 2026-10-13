@@ -20,16 +20,17 @@ class UpdateOrchestrator:
 
     def apply(self, identifier: str):
         intent = self._journal.get(identifier)
-        if not self._journal.claim(identifier):
+        token = self._journal.claim_owned(identifier)
+        if token is None:
             raise UpdateConflict("intent is not pending")
         try:
             self._backend.publish(intent.rrset)
         except Exception as exc:
             # An exception may represent an ambiguous remote result.
-            self._journal.finish(identifier, succeeded=False, error=type(exc).__name__)
+            self._journal.finish_owned(identifier, token, succeeded=False, error=type(exc).__name__)
             raise
         else:
-            self._journal.finish(identifier, succeeded=True)
+            self._journal.finish_owned(identifier, token, succeeded=True)
         return self._journal.get(identifier)
 
     def reconcile(self, identifier: str, *, retry: bool = False):
