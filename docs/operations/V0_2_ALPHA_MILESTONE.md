@@ -32,3 +32,8 @@ New findings are logged as issues. They do not change this release gate unless a
 ## Issue #1 implementation note
 
 Operator recovery now returns distinct process exit statuses: `0` successful operation/verified reconciliation, `3` missing intent, `4` invalid state or authorization refusal, `5` DNS observation unavailable, and `6` observation succeeded but RRset still differs (left unresolved). Standard JSON is emitted for a successful observation, including the unresolved result; diagnostic errors go to stderr. Reconciliation is **observation-only** and will not retry writes. Operator permissions remain restricted to the local service account. This change does not imply the complete issue is closed until the remaining acceptance criteria have been checked.
+
+## Milestone tracking update (2026-10-14)
+
+- [x] [Issue #1](https://github.com/Monotoba/UniversalDDNSServer/issues/1) operator recovery completed: bounded inspection, observe-only reconciliation, distinct error statuses and regression coverage; the full static/unit/integration CI suite passed.
+- [ ] [Issue #2](https://github.com/Monotoba/UniversalDDNSServer/issues/2) credential lifecycle begun with a local `python -m universalddns.admin --config CONFIG list` command. It displays principal, scopes, managed record IDs and revocation status, never bearer tokens or digest values. Rotation documentation and revocation test review remain.
