@@ -18,7 +18,7 @@ class OperatorInspectionTests(unittest.TestCase):
                 results = journal.list_by_state(("pending",), limit=1)
                 self.assertEqual([intent.identifier], [item.identifier for item in results])
                 self.assertEqual("pending", describe(results[0])["state"])
-                self.assertEqual([], journal.list_by_state(("failed",)))
+                self.assertEqual((), journal.list_by_state(("failed",)))
                 with self.assertRaises(ValueError):
                     journal.list_by_state(("pending'); DROP TABLE update_intents; --",))
                 with self.assertRaises(ValueError):
