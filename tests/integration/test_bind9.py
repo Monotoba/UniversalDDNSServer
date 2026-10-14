@@ -426,7 +426,7 @@ class Bind9IntegrationTests(unittest.TestCase):
                     expected = RecordSet("example.test", name, "A",
                                          120, ("192.0.2.81",))
                     self.assertEqual(self.backend().observe(expected), expected)
-                    from providers.provider_universalddns import UniversalDDNSDynDNS2
+                    from providers.provider_universalddns_dyndns2 import UniversalDDNSDynDNS2
                     # The real API and worker remain active; only public IP discovery
                     # is replaced with deterministic test input.
                     def dyn_discovered(url, *args, **kwargs):
