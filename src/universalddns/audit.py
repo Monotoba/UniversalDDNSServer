@@ -4,6 +4,13 @@ import logging
 import re
 
 _logger = logging.getLogger("universalddns.audit")
+# Uvicorn can leave the root logger at WARNING; use an explicit audit handler.
+_logger.setLevel(logging.INFO)
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+    _logger.addHandler(_handler)
+_logger.propagate = False
 _SAFE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
