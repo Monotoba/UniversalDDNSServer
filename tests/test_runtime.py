@@ -7,6 +7,7 @@ from pathlib import Path
 from universalddns.runtime import load_settings, factories
 from universalddns.token_store import TokenStore
 from universalddns.domain import RecordSet
+from universalddns.intents import PermissionDenied
 
 class RuntimeTests(unittest.TestCase):
     def test_config_and_live_policy(self):
@@ -37,8 +38,14 @@ class RuntimeTests(unittest.TestCase):
                 allowed = RecordSet("example.test", "host.example.test",
                                     "A", 60, ("192.0.2.2",))
                 self.assertTrue(service._authorizer.may_update("alice", allowed))
+            with journal() as instance:
+                pending = orchestrator(instance).submit("alice", allowed)
             with TokenStore(settings.database) as store:
                 store.revoke(token)
+            with journal() as instance:
+                with self.assertRaises(PermissionDenied):
+                    orchestrator(instance).apply(pending.identifier)
+                self.assertEqual(instance.get(pending.identifier).state.value, "failed")
             self.assertEqual(principals(), ())
             alias = root / "linked-secret.json"
             alias.symlink_to(secret)
