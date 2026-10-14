@@ -30,7 +30,7 @@ jobs:
         run: python -m pip install -e '.[api,dev]' requests
       - name: Validate deployment shell script syntax
         run: sh -n deploy/smoke-check.sh deploy/validate-install.sh
-          bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh
+          bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh tests/deployment/check-offline-restore.sh
           python -m py_compile tests/deployment/check-restore.py tests/deployment/check-recovery.py tests/deployment/check-inflight.py
           python tests/deployment/check-inflight.py
       - name: Validate systemd unit syntax
