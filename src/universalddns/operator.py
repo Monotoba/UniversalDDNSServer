@@ -2,7 +2,6 @@
 import argparse
 import json
 
-from .adapters.sqlite_intents import SQLiteIntentJournal
 from .intents import UpdateState
 from .runtime import factories, load_settings
 
