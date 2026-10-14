@@ -58,3 +58,20 @@ Record the Ubuntu release, Python version, command exit status, journal excerpts
 ## Limitations
 
 No production TLS reverse-proxy guide or security approval exists. A disposable Ubuntu VM was tested, but production deployment has not been evaluated. The process-local rate limiter does not provide distributed throttling; worker backoff, audit retention, mature credentials handling, and a safe policy for competing authoritative writers are incomplete. Test SQLite backups and restore separately. The DNS operation may succeed even if the worker fails to record completion, requiring authoritative reconciliation. Do not use a residential IP as the sole public authoritative DNS infrastructure. DDNS records do not resolve CGNAT or firewall ingress constraints.
+
+## Local intent inspection and reconciliation (post-v0.1.0a1 development)
+
+The local operator CLI can inspect queued, applying, and failed intents without using the HTTP API. Run it as the dedicated service account on the server:
+
+```sh
+sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.operator \
+  --config /etc/universalddns/config.json list --state failed --limit 50
+sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.operator \
+  --config /etc/universalddns/config.json show INTENT_UUID
+sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.operator \
+  --config /etc/universalddns/config.json reconcile INTENT_UUID
+```
+
+The reconcile command **observes the authoritative DNS state**. It marks a failed or interrupted intent applied only when the observed RRset matches the intended RRset. It **never automatically retries** a DNS write. A nonmatching observation leaves the intent unresolved. Reconciliation can raise an error for actively leased intents, missing identifiers, or unavailable DNS. Output is JSON and may contain hostnames, principal IDs, intended IP addresses, and backend error names; keep it in protected operational logs.
+
+These commands are development features after the v0.1.0a1 release. The existing installed wheel will not have them unless the package is upgraded in a controlled environment.
