@@ -78,3 +78,7 @@ ssh ubuntu@VM_IP 'curl -fsSL https://raw.githubusercontent.com/Monotoba/Universa
 For later runs, `ssh ubuntu@VM_IP 'bash ~/update-vm.sh'` updates to the latest main branch, though fetching the latest updater script first is recommended if it was changed in the meantime.
 
 On a command failure the script attempts to stop both services, restore the prior source commit and Python package, replace SQLite from its snapshot, and restart services. **This is best-effort rollback, not transactional rollback or a substitute for a VM snapshot.** A hard power failure or a change to database schema may require manual recovery. Snapshots persist under `/var/lib/universalddns/upgrade-backup-TIMESTAMP/`; delete old snapshots deliberately, never indiscriminately. The script does not upgrade the OS, BIND 9, or Python dependencies.
+
+### Verify without updating
+
+Run `ssh ubuntu@VM_IP 'bash ~/update-vm.sh --verify'` to check the installed Python distribution, active API/worker services, and existing VM installation checks. This mode does not fetch Git updates, reinstall packages, stop services, or create a database backup. The VM verification runner records its normal test log. It is not a DNS publication or reboot test.
