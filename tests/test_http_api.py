@@ -169,7 +169,7 @@ class HTTPTests(unittest.TestCase):
                                       params={"hostname": "host.example.org",
                                               "myip": "192.0.2.88"},
                                       headers={"Authorization": "Basic " + header})
-            self.assertEqual("good 192.0.2.88\\n", response.text)
+            self.assertEqual("good 192.0.2.88\n", response.text)
         finally:
             worker.join(timeout=3)
 
