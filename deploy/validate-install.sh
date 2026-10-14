@@ -1,5 +1,5 @@
 #!/bin/sh
-# Read-only acceptance checks on an installed local UniversalDDNSServer.
+# Non-destructive service checks on an installed local UniversalDDNSServer.
 set -eu
 CONFIG="${1:-/etc/universalddns/config.json}"
 SERVICE_USER="${SERVICE_USER:-universalddns}"
@@ -19,6 +19,8 @@ import sys
 from universalddns.runtime import load_settings
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
 settings = load_settings(sys.argv[1])
+if not settings.database.is_file():
+    raise SystemExit('Installed SQLite database is missing')
 with SQLiteIntentJournal(settings.database) as journal:
     journal.pending()
 print("Configuration, credentials and SQLite access: OK")
