@@ -25,6 +25,9 @@ class Backend:
     def publish(self, rrset):
         raise AssertionError("HTTP must never publish DNS")
 
+    def observe(self, rrset):
+        return None
+
 
 class HTTPTests(unittest.TestCase):
     def setUp(self):
