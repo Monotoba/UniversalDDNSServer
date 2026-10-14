@@ -81,3 +81,11 @@ These commands are development features after the v0.1.0a1 release. The existing
 The API and worker emit single-line JSON records through the `universalddns.audit` logger. Events include rejected authentication, insufficient scope, rate-limit denial, accepted submission, publication start/success/failure, and reconciliation results. Only approved short scalar fields (intent IDs, record IDs, principal labels, and error class names) are emitted. Unsafe or unexpected field values are redacted; bearer tokens, full request bodies and TSIG credentials are never passed to the audit emitter.
 
 Inspect locally with `sudo journalctl -u universalddns-api -u universalddns-worker --since today`. Journald persistence, retention limits, collection permissions and centralized export are **operator responsibilities**; this is not a durable, tamper-resistant audit database. Audit events from multiple processes are not globally ordered, and an abrupt crash may prevent some events from being written. Do not rely on audit lines alone as proof of authoritative DNS publication.
+
+### Recovery event volume and retention
+
+Recovery audit entries are emitted for expired leases only: `recovery_unresolved` and `recovery_observation_failed` identify affected intent IDs; `recovery_batch_completed` summarizes counts only when a batch was examined. If an unresolved lease persists, entries can repeat on successive polling cycles. Filter or alert by event name and apply journal storage and retention limits through the host's `journald.conf` configuration (for example, `SystemMaxUse`, `SystemKeepFree`, `MaxRetentionSec`). These are system-wide journald controls, **not** configuration keys supported by UniversalDDNSServer. Avoid claiming bounded on-disk storage without explicitly configuring the host. No secrets are included in the designed event fields.
+
+### v0.2 development milestone boundary
+
+This increment completes the initial structured audit event coverage. Remaining v0.2 work should be prioritized through the milestone tracker: operator recovery safety, security/credential lifecycle, and upgrade documentation. Log-retention policy is documented as an operator responsibility rather than becoming an open-ended release test.
