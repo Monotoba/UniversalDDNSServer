@@ -7,7 +7,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Status: Pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange)](docs/IMPLEMENTATION_PLAN.md)
 
-**Pre-alpha:** Modular open-source, self-hostable DDNS management platform. An authenticated FastAPI intake module exists, but there is no configured production HTTP deployment or continuously operating DNS worker.
+**Pre-alpha, unreleased:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
 
 ## Implemented
 - Python 3.11+ immutable validated A/AAAA resource-record-set model with order-insensitive RRset comparison.
@@ -17,9 +17,11 @@
 - RFC 2136/TSIG A/AAAA publishing adapter verified against an isolated BIND 9 authoritative server.
 - Durable per-principal idempotency keys, authoritative observation, and explicit recovery/retry operations.
 - Authenticated FastAPI record-update intake with scoped tokens, idempotency, and owner-restricted intent status.
-- Unit tests, SQLite workflow integration, Ruff lint, scoped mypy checks and GitHub Actions.
+- Local API-token administration, JSON configuration loader, systemd examples and host smoke checks.
+- Real localhost client/API/worker/BIND 9 integration with UDDNSUpdater.
+- Python 3.11–3.13 unit and BIND 9 integration tests, Ruff lint, scoped mypy checks and GitHub Actions.
 
-**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require manual reconciliation; unattended retries, multi-writer guarantees, a continuously scheduled DNS publishing service, production TLS, managed token provisioning, global rate limiting and deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
+**Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require authoritative reconciliation; unattended retries, general multi-writer guarantees, production TLS, distributed rate limiting and validated production deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
 
 ## Test the core
 
@@ -41,6 +43,7 @@ python -m unittest discover -s tests/integration -p 'test_*.py' -v
 - [HTTP API pre-alpha](docs/dev/HTTP_API.md)
 - [BIND 9 integration](docs/dev/BIND9_INTEGRATION.md) · [Recovery](docs/dev/RECOVERY.md)
 - [Quality gates](docs/dev/QUALITY_AND_CI.md) · [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md)
+- [Linux deployment](docs/operations/DEPLOYMENT.md) · [Pre-alpha release checklist](docs/operations/PREALPHA_RELEASE_CHECKLIST.md) · [Draft release notes](docs/operations/PREALPHA_RELEASE_NOTES_DRAFT.md)
 - [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
