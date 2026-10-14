@@ -8,6 +8,10 @@ jobs:
   bind9-and-sqlite:
     name: BIND 9 and SQLite integration
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -17,13 +21,17 @@ jobs:
           path: updater
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
       - name: Install isolated authoritative DNS
         run: sudo apt-get update && sudo apt-get install -y bind9
       - name: Isolate BIND binary from host AppArmor profile
         run: sudo install -m 755 /usr/sbin/named /usr/local/bin/ddns-ci-named
       - name: Install package
         run: python -m pip install -e '.[api,dev]' requests
+      - name: Validate systemd unit syntax
+        run: |
+          systemd-analyze verify deploy/universalddns-api.service deploy/universalddns-worker.service 2>&1 | tee /tmp/universalddns-unit-check.log
+          ! grep -E '(Unknown key|Failed to parse|Missing .*=|Invalid argument)' /tmp/universalddns-unit-check.log
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
