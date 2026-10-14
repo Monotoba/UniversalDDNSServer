@@ -10,12 +10,12 @@ This is a candidate release checklist, **not** evidence that a release exists.
 - [x] Parse systemd units and validate deployment shell script syntax in CI.
 
 ## Required manual validation on clean Ubuntu host
-- [ ] Install into documented /opt, /etc and /var/lib locations using a dedicated account.
-- [ ] Validate restricted TSIG file and writable SQLite state without exposing the API publicly.
-- [ ] Start both real systemd units; run `deploy/validate-install.sh` and retain sanitized output.
-- [ ] Confirm the API listens only on 127.0.0.1:8765, worker processes an update using a disposable DNS zone, and authoritative DNS is correct.
+- [x] Install into documented /opt, /etc and /var/lib locations using a dedicated account (Ubuntu VM; see [evidence](VM_VALIDATION_2026-10-14.md)).
+- [x] Validate service-account credential access and writable SQLite state, with API bound to loopback (full TSIG policy review remains open).
+- [x] Start both real systemd units; run `deploy/validate-install.sh` and review sanitized results.
+- [x] Confirm the API listens only on 127.0.0.1:8765, worker processes an update using a disposable DNS zone, and authoritative DNS is correct.
 - [ ] Restart worker and API; verify an interrupted pending intent is reconciled and does not publish twice.
-- [ ] Reboot the host and confirm enabled services recover correctly.
+- [x] Reboot the VM and confirm enabled services recover correctly (journal contains new boot marker).
 - [ ] Test an offline SQLite backup/restore including file ownership, then retest intent status.
 - [ ] Review TSIG update policy scope, firewall, error logging and retention, secret handling, and open security limitations.
 - [ ] Review resulting changes, version/tag and actual release artifacts before publishing.
