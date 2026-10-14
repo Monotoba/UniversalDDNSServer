@@ -158,6 +158,9 @@ recovery)
 inflight)
   /opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-inflight.py
   ;;
+tsig-deny)
+  sudo /opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-tsig-deny.py
+  ;;
 offline-restore)
   sudo bash /opt/universalddns/src/tests/deployment/check-offline-restore.sh --i-understand-this-stops-services
   bash "$0" verify
@@ -169,5 +172,5 @@ report)
   dpkg-query -W bind9 python3 > "$ROOT/packages.txt"
   echo "Report collection complete; archive will be generated after final PASS/FAIL is logged."
   ;;
-*) echo "Usage: bash vm-test.sh {install|verify|update|backup|restore|recovery|inflight|offline-restore|report}" >&2;exit 2;;
+*) echo "Usage: bash vm-test.sh {install|verify|update|backup|restore|recovery|inflight|tsig-deny|offline-restore|report}" >&2;exit 2;;
 esac
