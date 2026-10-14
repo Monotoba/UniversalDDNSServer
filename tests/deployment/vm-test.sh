@@ -5,7 +5,7 @@ ROOT="$HOME/uddns-results"
 mkdir -p "$ROOT"; chmod 700 "$ROOT"
 LOG="$ROOT/$(date -u +%Y%m%dT%H%M%SZ)-$MODE.log"
 exec > >(tee "$LOG") 2>&1
-on_exit() { local code=$?; echo "FINAL_RESULT=$([[ $code -eq 0 ]] && echo PASS || echo FAIL)"; echo "LOG=$LOG"; }
+on_exit() { local code=$?; local result=FAIL; [[ $code -eq 0 ]] && result=PASS; echo "FINAL_RESULT=$result"; echo "LOG=$LOG"; printf '{"test":"%s","result":"%s","exit_code":%s}\n' "$MODE" "$result" "$code" > "$LOG.json"; }
 trap on_exit EXIT
 systemd-detect-virt --vm >/dev/null || { echo "Run only inside disposable VM" >&2; exit 2; }
 case "$MODE" in
@@ -134,6 +134,12 @@ with tempfile.TemporaryDirectory(dir='/var/lib/universalddns') as td:
 print('PASS: non-destructive SQLite backup integrity')
 PY
   ;;
+restore)
+  sudo -u universalddns /opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-restore.py
+  ;;
+recovery)
+  sudo -u ubuntu /opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-recovery.py
+  ;;
 report)
   sudo systemctl is-enabled universalddns-api universalddns-worker > "$ROOT/enabled-services.txt"
   sudo systemctl status --no-pager universalddns-api universalddns-worker named | sed -E 's/(Bearer )[[:graph:]]+/\1[REDACTED]/g' > "$ROOT/service-status.txt" || true
@@ -142,5 +148,5 @@ report)
   tar -czf "$HOME/uddns-validation-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C "$HOME" uddns-results
   echo "Report is in HOME, not in uddns-results; review for secrets before sharing."
   ;;
-*) echo "Usage: bash vm-test.sh {install|verify|update|backup|report}" >&2;exit 2;;
+*) echo "Usage: bash vm-test.sh {install|verify|update|backup|restore|recovery|report}" >&2;exit 2;;
 esac
