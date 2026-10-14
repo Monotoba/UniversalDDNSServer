@@ -63,7 +63,7 @@ include "/etc/bind/uddns-lab.key";
 zone "lab.invalid" {
   type primary;
   file "/var/lib/bind/uddns-lab.zone";
-  update-policy { grant uddns-lab. zonesub A AAAA; };
+  update-policy { grant uddns-lab. name home.lab.invalid. A; };
 };
 BIND
   sudo named-checkconf -z
