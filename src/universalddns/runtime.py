@@ -1,6 +1,7 @@
 """Pre-alpha local deployment entry points. Not intended for public exposure."""
 import argparse
 import json
+import logging
 import os
 import signal
 import stat
@@ -112,6 +113,7 @@ def main():
     parser = argparse.ArgumentParser(description="UniversalDDNSServer local worker")
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     settings = load_settings(args.config)
     journal, orchestrator, _ = factories(settings)
     stop = Event()
