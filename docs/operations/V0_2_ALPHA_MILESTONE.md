@@ -37,3 +37,7 @@ Operator recovery now returns distinct process exit statuses: `0` successful ope
 
 - [x] [Issue #1](https://github.com/Monotoba/UniversalDDNSServer/issues/1) operator recovery completed: bounded inspection, observe-only reconciliation, distinct error statuses and regression coverage; the full static/unit/integration CI suite passed.
 - [ ] [Issue #2](https://github.com/Monotoba/UniversalDDNSServer/issues/2) credential lifecycle begun with a local `python -m universalddns.admin --config CONFIG list` command. It displays principal, scopes, managed record IDs and revocation status, never bearer tokens or digest values. Rotation documentation and revocation test review remain.
+
+## Credential rotation operating procedure
+
+Issue a replacement credential with identical least-privilege scopes, transfer it securely to the client, verify that it authenticates, and only then revoke the old credential through the local admin command using `--token-stdin`. Issue and revoke are local administrative operations; never put bearer values on the command line or in Git. List credential metadata with `python -m universalddns.admin --config CONFIG list`. The inventory deliberately hides token identifiers and hashes, so keep a secure external issuance record to distinguish credentials for the same principal. Revocation of the last eligible credential prevents pending publication at the worker authorization check, but does not cancel an update already in flight. Replacing a token does not revoke the old one automatically.
