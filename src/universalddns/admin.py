@@ -1,5 +1,6 @@
 """Local-only credential provisioning tool. Do not expose through HTTP."""
 import argparse
+import json
 from .runtime import load_settings
 from .token_store import TokenStore
 
@@ -13,6 +14,7 @@ def main():
     issue.add_argument("--record", action="append", required=True)
     issue.add_argument("--scope", action="append", choices=("records:write", "intents:read"),
                        required=True)
+    sub.add_parser("list", help="List local credential metadata without tokens or hashes")
     revoke = sub.add_parser("revoke")
     revoke.add_argument("--token-stdin", action="store_true", required=True)
     args = parser.parse_args()
@@ -23,6 +25,9 @@ def main():
         with TokenStore(settings.database) as store:
             token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record))
         print(token)
+    elif args.operation == "list":
+        with TokenStore(settings.database) as store:
+            print(json.dumps(store.list_metadata(), sort_keys=True, indent=2))
     else:
         import sys
         token = sys.stdin.readline().rstrip("\r\n")
