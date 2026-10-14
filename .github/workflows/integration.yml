@@ -31,6 +31,7 @@ jobs:
       - name: Validate deployment shell script syntax
         run: sh -n deploy/smoke-check.sh deploy/validate-install.sh
           bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh
+          python -m py_compile tests/deployment/check-restore.py tests/deployment/check-recovery.py
       - name: Validate systemd unit syntax
         run: |
           systemd-analyze verify deploy/universalddns-api.service deploy/universalddns-worker.service 2>&1 | tee /tmp/universalddns-unit-check.log
