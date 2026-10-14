@@ -46,3 +46,7 @@ ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && cp /opt/u
 Each mode writes a `*.log.json` with test name, PASS/FAIL and exit code under `~/uddns-results/`. Keep the local token outside Git; inspect report archives before sharing.
 
 The `inflight` test is a **deterministic simulated post-publication timeout** using a disposable SQLite database and fake authoritative backend; it validates reconciliation without a second publish. It is not proof of actual SIGKILL timing, BIND transport exactly-once semantics, or fully offline production database restoration. The `report` command now includes its own final result in the archive.
+
+## Offline installation restoration (destructive to the installed DB file; VM only)
+
+After preserving a VM snapshot or backing up the virtual disk, update the VM checkout and run `bash ~/vm-test.sh offline-restore`. This mode refuses non-VM hosts and hostnames other than `uddns-prealpha`, stops both app services, backs up the stopped SQLite database, restores the same snapshot via an atomic file replacement, verifies data, service-account ownership (`universalddns:universalddns`) and restrictive permissions (`0600`), then starts both services and performs installed-host verification. Failure cleanup attempts to restore the original and restart both services. **Do not run on production systems.** The operator should still retain an independent VM snapshot in case the guest or host crashes during file replacement.
