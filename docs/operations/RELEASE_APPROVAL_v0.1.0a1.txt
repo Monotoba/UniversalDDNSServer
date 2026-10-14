@@ -1,0 +1,5 @@
+Release authorization: v0.1.0a1
+Scope: experimental pre-alpha, not production.
+Approved by repository owner in conversation on 2026-10-14.
+Release gate: prior main branch CI all successful at 61455e6f4f3418ab78e5eae1fb671b9341276769; build metadata version 0.1.0a1.
+This marker triggers exactly one GitHub Actions publication attempt.

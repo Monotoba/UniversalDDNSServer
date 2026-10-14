@@ -1,0 +1,70 @@
+name: Publish approved v0.1.0a1 pre-alpha
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/operations/RELEASE_APPROVAL_v0.1.0a1.txt'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check release approval and no existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          grep -Fxq 'Release authorization: v0.1.0a1' docs/operations/RELEASE_APPROVAL_v0.1.0a1.txt
+          grep -Eq '^version = "0\.1\.0a1"$' pyproject.toml
+          if gh release view v0.1.0a1 >/dev/null 2>&1; then
+            echo 'Release already exists: leaving unchanged.'
+            exit 0
+          fi
+          if git ls-remote --tags origin refs/tags/v0.1.0a1 | grep -q .; then
+            echo 'Tag exists without release: refusing to overwrite.'
+            exit 1
+          fi
+      - name: Build and audit candidate packages
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile,zipfile
+          files=list(Path("dist").iterdir())
+          wheels=[p for p in files if p.suffix==".whl"]
+          sources=[p for p in files if p.name.endswith(".tar.gz")]
+          assert len(files)==2 and len(wheels)==len(sources)==1, files
+          assert "0.1.0a1" in wheels[0].name and "0.1.0a1" in sources[0].name
+          with zipfile.ZipFile(wheels[0]) as z:
+              names=z.namelist()
+              assert any(n.endswith("/METADATA") for n in names)
+              assert any(n.startswith("universalddns/") for n in names)
+              assert not any("tsig.json" in n or ".uddns-vm-token" in n for n in names)
+          with tarfile.open(sources[0]) as t:
+              names=t.getnames()
+              assert any(n.endswith("/pyproject.toml") for n in names)
+              assert not any("tsig.json" in n or ".uddns-vm-token" in n for n in names)
+          print("PASS: candidate archive audit")
+          PY
+          sha256sum dist/* > dist/SHA256SUMS.txt
+      - name: Publish GitHub pre-alpha release and packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create v0.1.0a1 dist/*.whl dist/*.tar.gz dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'UniversalDDNSServer v0.1.0a1 (pre-alpha)' \
+            --notes-file docs/operations/RELEASE_NOTES_v0.1.0a1.md \
+            --prerelease
