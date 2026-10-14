@@ -1,6 +1,6 @@
 # v0.2.0a1 — fixed experimental alpha milestone
 
-**Status:** Development; not yet tagged or released. This document defines a bounded plan, not a production-readiness claim.
+**Status:** Complete — `v0.2.0a1` published as a GitHub prerelease on 2026-10-14. This document defines a bounded plan, not a production-readiness claim.
 
 ## Objective
 Provide a diagnosable, safely operable local DDNS control plane while preserving the released v0.1.0a1 baseline. No new authoritative server, internet-facing deployment, or general automatic uncertain-result retry is planned.
@@ -11,7 +11,7 @@ Provide a diagnosable, safely operable local DDNS control plane while preserving
 - VM updater with offline SQLite snapshot, startup readiness wait, best-effort rollback, and non-mutating `--verify`
 - Isolated CI for Python 3.11–3.13 and real BIND 9 integration
 
-## Remaining tracked deliverables (priority order)
+## Completed tracked deliverables
 1. [#1 Safe operator recovery](https://github.com/Monotoba/UniversalDDNSServer/issues/1): finalize controlled recovery workflows and tests; no blind retry.
 2. [#2 Credential lifecycle](https://github.com/Monotoba/UniversalDDNSServer/issues/2): secure local metadata inspection, token rotation, and revocation semantics.
 3. [#3 Versioning and release gate](https://github.com/Monotoba/UniversalDDNSServer/issues/3): `0.2.0a1` metadata, auditable packaging, stable release notes, and owner-approved tag/release.
@@ -31,12 +31,12 @@ New findings are logged as issues. They do not change this release gate unless a
 
 ## Issue #1 implementation note
 
-Operator recovery now returns distinct process exit statuses: `0` successful operation/verified reconciliation, `3` missing intent, `4` invalid state or authorization refusal, `5` DNS observation unavailable, and `6` observation succeeded but RRset still differs (left unresolved). Standard JSON is emitted for a successful observation, including the unresolved result; diagnostic errors go to stderr. Reconciliation is **observation-only** and will not retry writes. Operator permissions remain restricted to the local service account. This change does not imply the complete issue is closed until the remaining acceptance criteria have been checked.
+Operator recovery now returns distinct process exit statuses: `0` successful operation/verified reconciliation, `3` missing intent, `4` invalid state or authorization refusal, `5` DNS observation unavailable, and `6` observation succeeded but RRset still differs (left unresolved). Standard JSON is emitted for a successful observation, including the unresolved result; diagnostic errors go to stderr. Reconciliation is **observation-only** and will not retry writes. Operator permissions remain restricted to the local service account. Issue #1 has passed its acceptance checks and is closed.
 
 ## Milestone tracking update (2026-10-14)
 
 - [x] [Issue #1](https://github.com/Monotoba/UniversalDDNSServer/issues/1) operator recovery completed: bounded inspection, observe-only reconciliation, distinct error statuses and regression coverage; the full static/unit/integration CI suite passed.
-- [ ] [Issue #2](https://github.com/Monotoba/UniversalDDNSServer/issues/2) credential lifecycle begun with a local `python -m universalddns.admin --config CONFIG list` command. It displays principal, scopes, managed record IDs and revocation status, never bearer tokens or digest values. Rotation documentation and revocation test review remain.
+- [x] [Issue #2](https://github.com/Monotoba/UniversalDDNSServer/issues/2) credential lifecycle begun with a local `python -m universalddns.admin --config CONFIG list` command. It displays principal, scopes, managed record IDs and revocation status, never bearer tokens or digest values. Rotation documentation and revocation tests completed.
 
 ## Credential rotation operating procedure
 
@@ -44,4 +44,11 @@ Issue a replacement credential with identical least-privilege scopes, transfer i
 
 ## Issue #2 completion
 
-Credential inventory excludes bearer tokens and stored hashes; staged rotation and least-privilege revocation semantics are documented. Unit regression confirms revoking the last eligible token prevents pending DNS publication, and a replacement token can authorize subsequent updates. Static, unit/documentation, and BIND integration CI passed at `15983d26334280ec311c47b23f61c9b59a19502e`. Issue #2 is closed. Remaining release work is Issue #3 only.
+Credential inventory excludes bearer tokens and stored hashes; staged rotation and least-privilege revocation semantics are documented. Unit regression confirms revoking the last eligible token prevents pending DNS publication, and a replacement token can authorize subsequent updates. Static, unit/documentation, and BIND integration CI passed at `15983d26334280ec311c47b23f61c9b59a19502e`. Issue #2 is closed. Issue #3 subsequently completed and closed on publication.
+
+## Final release record
+
+- Published prerelease: https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1
+- Verified release commit: `9e6c7801b69cec458bab539e1e3d34f5fb3eaf70`
+- Wheel, source distribution and `SHA256SUMS` uploaded; GitHub Actions static/unit/BIND packaging workflows passed on the release commit.
+- Issues #1, #2 and #3 closed. Later documentation updates do not modify the released artifacts or tag.
