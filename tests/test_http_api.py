@@ -1,4 +1,5 @@
 import tempfile
+import base64
 import unittest
 from pathlib import Path
 
@@ -102,6 +103,33 @@ class HTTPTests(unittest.TestCase):
                 "/api/v1/records/host/address", headers=headers,
                 json={"address": "192.0.2.44", "request_id": "another"}
             ).status_code, 401)
+
+
+    def test_dyndns2_queues_without_publishing_and_denies_invalid_requests(self):
+        def basic(token):
+            encoded = base64.b64encode(("client:" + token).encode()).decode()
+            return {"Authorization": "Basic " + encoded}
+
+        url = "/nic/update"
+        self.assertEqual("badauth\\n", self.client.get(url).text)
+        self.assertEqual("badauth\\n", self.client.get(
+            url, params={"hostname": "host.example.org", "myip": "192.0.2.20"},
+            headers=basic("invalid")).text)
+        self.assertEqual("nohost\\n", self.client.get(
+            url, params={"hostname": "other.example.org", "myip": "192.0.2.20"},
+            headers=basic(self.alice)).text)
+        self.assertEqual("dnserr\\n", self.client.get(
+            url, params={"hostname": "host.example.org", "myip": "::1"},
+            headers=basic(self.alice)).text)
+        response = self.client.get(
+            url, params={"hostname": "host.example.org", "myip": "192.0.2.20"},
+            headers=basic(self.alice))
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("911\\n", response.text)
+        with SQLiteIntentJournal(self.path) as journal:
+            intents = journal.list_by_state(("pending",), limit=10)
+            self.assertEqual(1, len(intents))
+            self.assertEqual(("192.0.2.20",), intents[0].rrset.values)
 
     def test_validates_mapping_and_address(self):
         url = "/api/v1/records/host/address"
