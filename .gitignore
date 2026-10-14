@@ -15,3 +15,5 @@ build/
 htmlcov/
 .idea/
 .vscode/
+# Python build metadata generated during local package installation
+*.egg-info/
