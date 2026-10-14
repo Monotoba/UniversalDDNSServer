@@ -15,6 +15,12 @@ class UpdateOrchestrator:
             raise ValueError('invalid lease duration')
         self._lease_seconds = lease_seconds
 
+    def is_current(self, principal_id: str, rrset: RecordSet) -> bool:
+        """Read authoritative state for a scoped record; never write DNS."""
+        if not self._authorizer.may_update(principal_id, rrset):
+            raise PermissionDenied("not permitted to inspect record")
+        return self._backend.observe(rrset) == rrset
+
     def submit(self, principal_id: str, rrset: RecordSet, request_key: str | None = None):
         if not self._authorizer.may_update(principal_id, rrset):
             raise PermissionDenied("not permitted to update record")
