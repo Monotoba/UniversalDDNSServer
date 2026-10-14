@@ -75,3 +75,9 @@ sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.operat
 The reconcile command **observes the authoritative DNS state**. It marks a failed or interrupted intent applied only when the observed RRset matches the intended RRset. It **never automatically retries** a DNS write. A nonmatching observation leaves the intent unresolved. Reconciliation can raise an error for actively leased intents, missing identifiers, or unavailable DNS. Output is JSON and may contain hostnames, principal IDs, intended IP addresses, and backend error names; keep it in protected operational logs.
 
 These commands are development features after the v0.1.0a1 release. The existing installed wheel will not have them unless the package is upgraded in a controlled environment.
+
+## Structured audit events (development after v0.1.0a1)
+
+The API and worker emit single-line JSON records through the `universalddns.audit` logger. Events include rejected authentication, insufficient scope, rate-limit denial, accepted submission, publication start/success/failure, and reconciliation results. Only approved short scalar fields (intent IDs, record IDs, principal labels, and error class names) are emitted. Unsafe or unexpected field values are redacted; bearer tokens, full request bodies and TSIG credentials are never passed to the audit emitter.
+
+Inspect locally with `sudo journalctl -u universalddns-api -u universalddns-worker --since today`. Journald persistence, retention limits, collection permissions and centralized export are **operator responsibilities**; this is not a durable, tamper-resistant audit database. Audit events from multiple processes are not globally ordered, and an abrupt crash may prevent some events from being written. Do not rely on audit lines alone as proof of authoritative DNS publication.
