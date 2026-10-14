@@ -24,6 +24,7 @@ ssh ubuntu@VM_IP 'bash ~/vm-test.sh verify'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh backup'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh restore'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh recovery'
+ssh ubuntu@VM_IP 'bash ~/vm-test.sh inflight'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh report'
 scp 'ubuntu@VM_IP:uddns-validation-*.tar.gz' .
 ```
@@ -43,3 +44,5 @@ ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && cp /opt/u
 ```
 
 Each mode writes a `*.log.json` with test name, PASS/FAIL and exit code under `~/uddns-results/`. Keep the local token outside Git; inspect report archives before sharing.
+
+The `inflight` test is a **deterministic simulated post-publication timeout** using a disposable SQLite database and fake authoritative backend; it validates reconciliation without a second publish. It is not proof of actual SIGKILL timing, BIND transport exactly-once semantics, or fully offline production database restoration. The `report` command now includes its own final result in the archive.
