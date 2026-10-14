@@ -1,5 +1,7 @@
 import tempfile
 import base64
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -44,7 +46,7 @@ class HTTPTests(unittest.TestCase):
         records = {"host": RecordSet("example.org", "host.example.org", "A",
                                      60, ("192.0.2.1",))}
         self.client = TestClient(create_app(make_journal, make_orchestrator,
-                                            records, principals, rate_limit=20))
+                                            records, principals, rate_limit=20, dyndns_wait_seconds=0))
     def tearDown(self):
         self.client.close()
         self.temp.cleanup()
@@ -130,6 +132,46 @@ class HTTPTests(unittest.TestCase):
             intents = journal.list_by_state(("pending",), limit=10)
             self.assertEqual(1, len(intents))
             self.assertEqual(("192.0.2.20",), intents[0].rrset.values)
+
+
+    def test_dyndns2_good_only_after_worker_records_applied(self):
+        def journal():
+            return SQLiteIntentJournal(self.path)
+
+        def service(j):
+            return UpdateOrchestrator(Policy(), j, Backend())
+
+        principal = APIPrincipal.from_token(
+            "alice", self.alice, frozenset({"records:write"}), frozenset({"host"})
+        )
+        app = create_app(journal, service,
+                         {"host": RecordSet("example.org", "host.example.org", "A",
+                                            60, ("192.0.2.1",))},
+                         (principal,), dyndns_wait_seconds=2)
+        def finish_from_worker():
+            end = time.monotonic() + 1.5
+            while time.monotonic() < end:
+                with journal() as j:
+                    pending = j.pending()
+                    if pending:
+                        token = j.claim_with_lease(pending[0].identifier)
+                        if token:
+                            j.finish_owned(pending[0].identifier, token, succeeded=True)
+                            return
+                time.sleep(0.02)
+
+        worker = threading.Thread(target=finish_from_worker)
+        worker.start()
+        try:
+            with TestClient(app) as client:
+                header = base64.b64encode(("client:" + self.alice).encode()).decode()
+                response = client.get("/nic/update",
+                                      params={"hostname": "host.example.org",
+                                              "myip": "192.0.2.88"},
+                                      headers={"Authorization": "Basic " + header})
+            self.assertEqual("good 192.0.2.88\\n", response.text)
+        finally:
+            worker.join(timeout=3)
 
     def test_validates_mapping_and_address(self):
         url = "/api/v1/records/host/address"
