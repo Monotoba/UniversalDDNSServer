@@ -14,9 +14,11 @@ This is a candidate release checklist, **not** evidence that a release exists.
 - [x] Validate service-account credential access and writable SQLite state, with API bound to loopback (full TSIG policy review remains open).
 - [x] Start both real systemd units; run `deploy/validate-install.sh` and review sanitized results.
 - [x] Confirm the API listens only on 127.0.0.1:8765, worker processes an update using a disposable DNS zone, and authoritative DNS is correct.
-- [ ] Restart worker and API; verify an interrupted pending intent is reconciled and does not publish twice.
+- [x] Stop the worker, queue an intent, verify replay preserves its intent ID, restart the worker, and verify authoritative DNS (twice on Ubuntu VM; pending-state test only).
+- [ ] Test an actual interruption during in-flight DNS publication and verify reconciliation without unintended republishing; independently verify API service restart behavior.
 - [x] Reboot the VM and confirm enabled services recover correctly (journal contains new boot marker).
-- [ ] Test an offline SQLite backup/restore including file ownership, then retest intent status.
+- [x] Perform a SQLite online backup and scratch-database restore, verify integrity and compare all tables (twice on Ubuntu VM; live database left intact).
+- [ ] Verify a full offline restoration procedure, restored file ownership/permissions and service startup against restored state.
 - [ ] Review TSIG update policy scope, firewall, error logging and retention, secret handling, and open security limitations.
 - [ ] Review resulting changes, version/tag and actual release artifacts before publishing.
 
