@@ -20,6 +20,23 @@ sudo git -C "$REPO" rev-parse --is-inside-work-tree | grep -Fxq true || { echo "
 sudo test -x "$VENV/bin/python" || { echo "Virtual environment missing: $VENV" >&2; exit 2; }
 sudo systemctl is-active --quiet "$API"
 sudo systemctl is-active --quiet "$WORKER"
+# systemd active does not guarantee that the TCP listener is ready.
+# Bound the wait and print service diagnostics if startup never completes.
+wait_for_api() {
+  local i
+  for ((i=0; i<30; i++)); do
+    if sudo systemctl is-active --quiet "$API" &&
+       sudo systemctl is-active --quiet "$WORKER" &&
+       "$VENV/bin/python" -c 'import socket; s=socket.create_connection(("127.0.0.1",8765),timeout=1); s.close()' 2>/dev/null; then
+      echo "API ready on 127.0.0.1:8765"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "API not ready after 30 seconds" >&2
+  sudo systemctl status --no-pager "$API" "$WORKER" >&2 || true
+  return 1
+}
 if [[ "$MODE" == "--verify" ]]; then
   echo "Checking installed Python distribution and runtime services (no Git update)"
   sudo "$VENV/bin/python" -m pip show universalddnsserver || exit 1
@@ -52,6 +69,7 @@ rollback() {
     sudo install -m 0600 -o universalddns -g universalddns "$BACKUP/state.sqlite3" "$DB"
   fi
   sudo systemctl start "$API" "$WORKER" || true
+  wait_for_api || true
   echo "ROLLBACK_ATTEMPTED=YES; verify services manually. Backup retained at $BACKUP"
   exit "$status"
 }
@@ -73,6 +91,7 @@ sudo install -m 0644 "$REPO/deploy/universalddns-worker.service" /etc/systemd/sy
 sudo systemctl daemon-reload
 cp "$REPO/tests/deployment/vm-test.sh" "$HOME/vm-test.sh"
 sudo systemctl start "$API" "$WORKER"
+wait_for_api
 bash "$HOME/vm-test.sh" verify
 trap - ERR
 echo "FINAL_RESULT=PASS"
