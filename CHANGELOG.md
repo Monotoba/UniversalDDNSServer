@@ -15,7 +15,7 @@ All notable changes are recorded here. No stable release or GitHub pre-alpha rel
 - Pre-alpha draft release notes and explicit clean-host validation checklist.
 
 ### Known limitations
-- Clean Ubuntu systemd installation, reboot persistence and backup/restore are not yet validated.
+- Ubuntu 24.04.5 VM installation, reboot persistence, scratch SQLite restore and guarded offline restore passed; see validation evidence. Actual in-flight process termination and production disaster recovery are not validated.
 - Not suitable for direct internet exposure; TLS termination and global rate limiting are not supplied.
 - No first-party authoritative DNS daemon; an existing RFC 2136 server is required.
 - General multi-writer conflict semantics and automated resolution of ambiguous publication outcomes remain incomplete.

@@ -14,12 +14,13 @@ UniversalDDNSServer provides a Python DDNS update control plane backed by SQLite
 
 ## Explicit limitations
 - No bundled authoritative DNS server; deploy a separate RFC 2136-capable server.
-- No verified clean-host systemd installation or reboot and backup restoration at draft time.
+- Ubuntu 24.04.5 VM installation, actual BIND publication, reboot, worker pending recovery, SQLite scratch and offline restoration verified; see VM validation report.
 - Not safe to expose directly to the internet. API defaults to 127.0.0.1; production TLS and perimeter controls are not supplied.
 - Authorization, throttling and audit management are pre-alpha. Multi-writer conflict guarantees and automatic uncertain-outcome retries are incomplete.
+- A simulated post-publication timeout reconciles without repeat publication, but actual in-flight process termination / RFC 2136 network faults are unverified.
 - HTTP 202 signals durable queue acceptance, not DNS publication; observe status and authoritative DNS to verify updates.
 
 ## Installation
 Consult [deployment instructions](DEPLOYMENT.md) and [release gate checklist](PREALPHA_RELEASE_CHECKLIST.md). Verify the isolated test zone and TSIG permission scope before enabling any DNS writes.
 
-**Release status:** Draft only. No tag, artifact, or GitHub release has been published.
+**Release status:** Draft only. No tag or GitHub release has been published; packaging artifacts require review.

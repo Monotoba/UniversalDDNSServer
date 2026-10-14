@@ -1,6 +1,6 @@
 # Security policy
 
-**Status:** design-only; no supported deployed release exists.
+**Status:** experimental pre-alpha; no supported production deployment or security certification exists. A private Ubuntu VM installation has been validated, not an internet-facing server.
 
 Do not publish vulnerabilities, credentials or exploit proofs in public issues. Contact the maintainer privately through GitHub's private vulnerability reporting when enabled, or a privately agreed secure channel. No response-time SLA is promised.
 
