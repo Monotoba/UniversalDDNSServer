@@ -43,7 +43,7 @@ python -m unittest discover -s tests/integration -p 'test_*.py' -v
 - [HTTP API pre-alpha](docs/dev/HTTP_API.md)
 - [BIND 9 integration](docs/dev/BIND9_INTEGRATION.md) · [Recovery](docs/dev/RECOVERY.md)
 - [Quality gates](docs/dev/QUALITY_AND_CI.md) · [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md)
-- [Linux deployment](docs/operations/DEPLOYMENT.md) · [Pre-alpha release checklist](docs/operations/PREALPHA_RELEASE_CHECKLIST.md) · [Draft release notes](docs/operations/PREALPHA_RELEASE_NOTES_DRAFT.md)
+- [Isolated Ubuntu VM test kit](tests/deployment/README.md) · [Linux deployment](docs/operations/DEPLOYMENT.md) · [Pre-alpha release checklist](docs/operations/PREALPHA_RELEASE_CHECKLIST.md) · [Draft release notes](docs/operations/PREALPHA_RELEASE_NOTES_DRAFT.md)
 - [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
