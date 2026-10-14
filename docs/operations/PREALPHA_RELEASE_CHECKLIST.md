@@ -18,7 +18,7 @@ This is a candidate release checklist, **not** evidence that a release exists.
 - [ ] Test an actual interruption during in-flight DNS publication and verify reconciliation without unintended republishing; independently verify API service restart behavior.
 - [x] Reboot the VM and confirm enabled services recover correctly (journal contains new boot marker).
 - [x] Perform a SQLite online backup and scratch-database restore, verify integrity and compare all tables (twice on Ubuntu VM; live database left intact).
-- [ ] Verify a full offline restoration procedure, restored file ownership/permissions and service startup against restored state.
+- [x] Verify guarded VM offline restoration of a stopped SQLite database, matching snapshot contents, restored ownership/permissions and API/worker startup (archive `uddns-validation-20261014T130728Z.tar.gz`).
 - [ ] Review TSIG update policy scope, firewall, error logging and retention, secret handling, and open security limitations.
 - [ ] Review resulting changes, version/tag and actual release artifacts before publishing.
 
