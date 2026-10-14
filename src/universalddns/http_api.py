@@ -1,7 +1,6 @@
 """Pre-alpha authenticated HTTP intake; DNS network writes belong to workers."""
 import hashlib
 import hmac
-import logging
 import re
 import time
 from dataclasses import dataclass
@@ -11,12 +10,12 @@ from typing import Callable
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from .audit import audit
 from .adapters.sqlite_intents import SQLiteIntentJournal
 from .domain import RecordSet
 from .intents import UpdateConflict, UnknownIntent
 from .orchestrator import UpdateOrchestrator
 
-log = logging.getLogger("universalddns.audit")
 _KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
@@ -90,10 +89,13 @@ def create_app(
             if hmac.compare_digest(p.token_sha256, digest):
                 identity = p
         if identity is None:
+            audit("authentication_denied", reason="invalid_bearer")
             raise HTTPException(401, "authentication required", headers={"WWW-Authenticate": "Bearer"})
         if not gate.allow(identity.identifier):
+            audit("rate_limit_denied", principal=identity.identifier)
             raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": "60"})
         if scope not in identity.scopes:
+            audit("scope_denied", principal=identity.identifier, scope=scope)
             raise HTTPException(403, "insufficient scope")
         request.state.principal_id = identity.identifier
         return identity
@@ -107,6 +109,7 @@ def create_app(
                authorization: str | None = Header(default=None)):
         principal = authenticated(request, authorization, "records:write")
         if record_id not in records or record_id not in principal.record_ids:
+            audit("record_denied", principal=principal.identifier)
             raise HTTPException(404, "record not found")
         if not _KEY.fullmatch(body.request_id):
             raise HTTPException(422, "invalid request id")
@@ -121,16 +124,18 @@ def create_app(
                 intent = orchestrator_factory(journal).submit(
                     principal.identifier, rrset, request_key=body.request_id)
             except UpdateConflict as exc:
+                audit("submission_conflict", principal=principal.identifier, record=record_id)
                 raise HTTPException(409, "conflicting update") from exc
             except ValueError as exc:
                 raise HTTPException(422, "invalid update") from exc
             except Exception as exc:
                 from .intents import PermissionDenied
                 if isinstance(exc, PermissionDenied):
+                    audit("publication_denied", principal=principal.identifier, record=record_id)
                     raise HTTPException(403, "update not permitted") from exc
                 raise
-        log.info("update_submitted principal=%s record=%s intent=%s",
-                 principal.identifier, record_id, intent.identifier)
+        audit("update_submitted", principal=principal.identifier,
+              record=record_id, intent=intent.identifier)
         return {"intent_id": intent.identifier, "status": intent.state.value}
 
     @app.get("/api/v1/intents/{intent_id}")
