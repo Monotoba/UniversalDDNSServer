@@ -27,14 +27,12 @@ exec > >(tee "$LOG") 2>&1
 echo "BEFORE=$BEFORE"
 echo "AFTER=$AFTER"
 echo "BACKUP=$BACKUP"
-STOPPED=0
-COMMITTED=0
 rollback() {
   local status=$?
   trap - ERR EXIT
   echo "Update failed (exit $status); restoring prior code and database"
   sudo systemctl stop "$WORKER" "$API" || true
-  sudo git -C "$REPO" checkout --detach "$BEFORE" || true
+  sudo git -C "$REPO" reset --hard "$BEFORE" || true
   sudo "$VENV/bin/python" -m pip install --no-deps --force-reinstall "$REPO" || true
   if [[ -f "$BACKUP/state.sqlite3" ]]; then
     sudo install -m 0600 -o universalddns -g universalddns "$BACKUP/state.sqlite3" "$DB"
@@ -45,7 +43,6 @@ rollback() {
 }
 trap rollback ERR
 sudo systemctl stop "$WORKER" "$API"
-STOPPED=1
 # Offline database snapshot: no app writer is running. Preserve WAL contents
 # by using sqlite3's online backup API rather than copying one file.
 sudo -u universalddns "$VENV/bin/python" - "$DB" "$BACKUP/state.sqlite3" <<'PY'
@@ -63,7 +60,6 @@ sudo systemctl daemon-reload
 cp "$REPO/tests/deployment/vm-test.sh" "$HOME/vm-test.sh"
 sudo systemctl start "$API" "$WORKER"
 bash "$HOME/vm-test.sh" verify
-COMMITTED=1
 trap - ERR
 echo "FINAL_RESULT=PASS"
 echo "Upgraded $BEFORE -> $AFTER. Backup retained: $BACKUP"
