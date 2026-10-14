@@ -23,7 +23,7 @@ jobs:
       - name: Isolate BIND binary from host AppArmor profile
         run: sudo install -m 755 /usr/sbin/named /usr/local/bin/ddns-ci-named
       - name: Install package
-        run: python -m pip install -e '.[dev]' requests
+        run: python -m pip install -e '.[api,dev]' requests
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
