@@ -426,6 +426,26 @@ class Bind9IntegrationTests(unittest.TestCase):
                     expected = RecordSet("example.test", name, "A",
                                          120, ("192.0.2.81",))
                     self.assertEqual(self.backend().observe(expected), expected)
+                    from providers.provider_universalddns import UniversalDDNSDynDNS2
+                    # The real API and worker remain active; only public IP discovery
+                    # is replaced with deterministic test input.
+                    def dyn_discovered(url, *args, **kwargs):
+                        if url == "https://api.ipify.org":
+                            class Discovery:
+                                status_code = 200
+                                text = "192.0.2.82"
+                                def close(self):
+                                    pass
+                            return Discovery()
+                        return original_get(url, *args, **kwargs)
+                    with patch("requests.get", side_effect=dyn_discovered):
+                        dyn = UniversalDDNSDynDNS2(
+                            "dyndns", {"base_url": base, "hostname": name, "token": token})
+                        self.assertTrue(dyn.update_ddns())
+                        self.assertTrue(dyn.update_ddns())  # authoritative nochg
+                    updated = RecordSet("example.test", name, "A",
+                                        120, ("192.0.2.82",))
+                    self.assertEqual(self.backend().observe(updated), updated)
                 finally:
                     for process in (worker, api):
                         if process is not None:
