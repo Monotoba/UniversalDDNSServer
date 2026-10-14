@@ -1,8 +1,16 @@
 # Changelog
 
-All notable changes are recorded here. No stable release or GitHub pre-alpha release has been published.
+All notable changes are recorded here. Published alpha versions are experimental; no stable release has been published.
 
-## [Unreleased] — candidate for v0.1.0a1 (not tagged)
+## [0.2.0a1] — 2026-10-14
+
+- Structured, redacted audit events for authentication, publishing, and recovery.
+- Read-only operator intent inspection and authoritative reconciliation with explicit exit codes.
+- Local credential inventory and documented token rotation procedure.
+- Guarded VM updater with backups, startup readiness checks, verification and best-effort rollback.
+- Expanded regression testing and packaged alpha artifacts with SHA-256 checksums.
+
+## [0.1.0a1] — published prerelease
 
 ### Added
 - Validated A/AAAA record sets, SQLite persistence, and durable intent queue with per-principal idempotency.
@@ -19,7 +27,7 @@ All notable changes are recorded here. No stable release or GitHub pre-alpha rel
 - Not suitable for direct internet exposure; TLS termination and global rate limiting are not supplied.
 - No first-party authoritative DNS daemon; an existing RFC 2136 server is required.
 - General multi-writer conflict semantics and automated resolution of ambiguous publication outcomes remain incomplete.
-- This section is *not* a published release record.
+- This section records the initial published experimental alpha.
 
 ## [0.0.0-design] — 2026-10-13
 Initial architecture and project documentation.
