@@ -1,6 +1,7 @@
 """Bounded reconciliation pass; never blindly repeats ambiguous DNS writes."""
 from dataclasses import dataclass
 
+from .audit import audit
 from .adapters.sqlite_intents import SQLiteIntentJournal
 from .orchestrator import UpdateOrchestrator
 
@@ -30,12 +31,18 @@ class RecoveryWorker:
         for intent in attempts:
             try:
                 result = self._orchestrator.reconcile(intent.identifier)
-            except Exception:
+            except Exception as exc:
                 # Preserve ambiguity if the server cannot be observed or ownership changed.
                 errors += 1
+                audit("recovery_observation_failed", intent=intent.identifier,
+                      error=type(exc).__name__)
             else:
                 if result.state.value == "applied":
                     verified += 1
                 else:
                     unresolved += 1
+                    audit("recovery_unresolved", intent=intent.identifier)
+        if attempts:
+            audit("recovery_batch_completed", inspected=str(len(attempts)),
+                  verified=str(verified), unresolved=str(unresolved), errors=str(errors))
         return RecoveryReport(len(attempts), verified, unresolved, errors)
