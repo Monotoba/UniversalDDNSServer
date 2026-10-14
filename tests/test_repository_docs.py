@@ -26,7 +26,7 @@ class DocumentationTests(unittest.TestCase):
     def test_status_is_explicit(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("pre-alpha", readme.lower())
-        self.assertIn("no configured production http deployment", readme.lower())
+        self.assertIn("production-ready public service is not supplied", readme.lower())
 
 
 if __name__ == "__main__":
