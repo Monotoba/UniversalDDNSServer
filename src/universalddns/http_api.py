@@ -149,7 +149,7 @@ def create_app(
         from binascii import Error as Base64Error
 
         def answer(message: str) -> PlainTextResponse:
-            return PlainTextResponse(message + "\\n", media_type="text/plain")
+            return PlainTextResponse(message + "\n", media_type="text/plain")
 
         token = ""
         if authorization and authorization.startswith("Basic "):
