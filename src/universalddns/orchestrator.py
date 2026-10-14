@@ -27,7 +27,13 @@ class UpdateOrchestrator:
         if token is None:
             raise UpdateConflict("intent is not pending")
         try:
+            if not self._authorizer.may_update(intent.principal_id, intent.rrset):
+                self._journal.finish_owned(identifier, token, succeeded=False,
+                                           error="PermissionRevoked")
+                raise PermissionDenied("permission revoked before publication")
             self._backend.publish(intent.rrset)
+        except PermissionDenied:
+            raise
         except Exception as exc:
             # An exception may represent an ambiguous remote result.
             self._journal.finish_owned(identifier, token, succeeded=False, error=type(exc).__name__)
