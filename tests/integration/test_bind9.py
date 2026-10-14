@@ -281,7 +281,6 @@ class Bind9IntegrationTests(unittest.TestCase):
         import sys
         import requests
         from unittest.mock import patch
-        from urllib.parse import urlsplit
         from uuid import uuid4
 
         source = os.environ.get("UDDNS_UPDATER_SOURCE")
