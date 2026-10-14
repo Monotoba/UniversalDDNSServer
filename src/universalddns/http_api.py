@@ -79,7 +79,7 @@ def create_app(
     if not current or not records:
         raise ValueError("API requires configured principals and managed records")
     gate = RateGate(rate_limit)
-    app = FastAPI(title="UniversalDDNSServer", version="0.1.0-prealpha")
+    app = FastAPI(title="UniversalDDNSServer", version="0.2.0a1")
 
     def authenticated(request: Request, authorization: str | None, scope: str) -> APIPrincipal:
         token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
