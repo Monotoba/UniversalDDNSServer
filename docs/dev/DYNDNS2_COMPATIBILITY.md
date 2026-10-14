@@ -13,6 +13,6 @@ No implicit source-IP discovery, unauthenticated updates, comma-separated hostna
 
 ## UDDNSUpdater adapter interoperability
 
-The `Monotoba/UDDNSUpdater` repository now includes `UniversalDDNSDynDNS2` alongside the existing, intent-aware `UniversalDDNSServer` REST adapter. CI pins the client revision in `.github/workflows/integration.yml` and exercises the new adapter against the live loopback HTTP API, separate worker and isolated BIND 9.
+The `Monotoba/UDDNSUpdater` repository now includes `UniversalDDNSDynDNS2` in `providers/provider_universalddns_dyndns2.py` alongside the existing, intent-aware `UniversalDDNSServer` REST adapter. CI pins the client revision in `.github/workflows/integration.yml` and exercises the new adapter against the live loopback HTTP API, separate worker and isolated BIND 9.
 
 Experimental client config fields: `base_url=http://127.0.0.1:8765`, `hostname=<authorized-managed-fqdn>`, and `token=<issued-api-token>`. Keep a persistent state file enabled in UDDNSUpdater and protect credentials. The DynDNS2 client accepts only exact `good <ip>` or `nochg <ip>` success, and stops conservatively on `911` or other replies. It never treats an unconfirmed publication as completed; a human operator must inspect ambiguous attempts. The original REST adapter remains preferable when intent identifiers and state polling are required. Neither adapter should be exposed directly over public HTTP.
