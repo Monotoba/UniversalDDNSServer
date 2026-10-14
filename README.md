@@ -7,7 +7,9 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![Status: Pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange)](docs/IMPLEMENTATION_PLAN.md)
 
-**Pre-alpha, unreleased:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
+**Experimental pre-alpha:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
+
+The [v0.1.0a1 prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) is published; [v0.2.0a1 release notes](docs/releases/v0.2.0a1.md) are in preparation (not yet tagged or published).
 
 ## Implemented
 - Python 3.11+ immutable validated A/AAAA resource-record-set model with order-insensitive RRset comparison.
