@@ -165,6 +165,5 @@ report)
   dpkg-query -W bind9 python3 > "$ROOT/packages.txt"
   echo "Report collection complete; archive will be generated after final PASS/FAIL is logged."
   ;;
-  ;;
 *) echo "Usage: bash vm-test.sh {install|verify|update|backup|restore|recovery|inflight|report}" >&2;exit 2;;
 esac
