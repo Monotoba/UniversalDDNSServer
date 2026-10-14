@@ -1,15 +1,14 @@
 """Local operator inspection behavior is bounded and read-only."""
 import tempfile
+import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from universalddns.intents import UpdateConflict, UnknownIntent
-from universalddns.operator import main
-import unittest
-from pathlib import Path
 
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
 from universalddns.domain import RecordSet
-from universalddns.operator import describe
+from universalddns.operator import describe, main
 
 
 class OperatorInspectionTests(unittest.TestCase):
