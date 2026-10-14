@@ -41,3 +41,7 @@ Operator recovery now returns distinct process exit statuses: `0` successful ope
 ## Credential rotation operating procedure
 
 Issue a replacement credential with identical least-privilege scopes, transfer it securely to the client, verify that it authenticates, and only then revoke the old credential through the local admin command using `--token-stdin`. Issue and revoke are local administrative operations; never put bearer values on the command line or in Git. List credential metadata with `python -m universalddns.admin --config CONFIG list`. The inventory deliberately hides token identifiers and hashes, so keep a secure external issuance record to distinguish credentials for the same principal. Revocation of the last eligible credential prevents pending publication at the worker authorization check, but does not cancel an update already in flight. Replacing a token does not revoke the old one automatically.
+
+## Issue #2 completion
+
+Credential inventory excludes bearer tokens and stored hashes; staged rotation and least-privilege revocation semantics are documented. Unit regression confirms revoking the last eligible token prevents pending DNS publication, and a replacement token can authorize subsequent updates. Static, unit/documentation, and BIND integration CI passed at `15983d26334280ec311c47b23f61c9b59a19502e`. Issue #2 is closed. Remaining release work is Issue #3 only.
