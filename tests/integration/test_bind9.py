@@ -183,6 +183,98 @@ class Bind9IntegrationTests(unittest.TestCase):
                     "/api/v1/intents/" + result.json()["intent_id"],
                     headers=headers).status_code, 401)
 
+
+    def test_uddnsupdater_client_to_real_bind_pipeline(self):
+        """Cross-repository protocol test with HTTP transport bridged to ASGI.
+
+        The client and server are real code; only HTTP transport is in-process.
+        The authoritative DNS server is a real isolated named process.
+        """
+        import importlib
+        import sys
+        from unittest.mock import patch
+        from uuid import uuid4
+
+        client_source = os.environ.get("UDDNS_UPDATER_SOURCE")
+        if not client_source:
+            self.skipTest("UDDNS_UPDATER_SOURCE checkout not configured")
+        sys.path.insert(0, client_source)
+        try:
+            provider_module = importlib.import_module("providers.provider_universalddns")
+            provider_class = provider_module.UniversalDDNSServer
+            with tempfile.TemporaryDirectory() as directory:
+                db = Path(directory) / "state.db"
+                name = "client-" + uuid4().hex[:10] + ".example.test"
+                template = RecordSet("example.test", name, "A", 120, ("192.0.2.91",))
+                desired = RecordSet("example.test", name, "A", 120, ("192.0.2.92",))
+                with TokenStore(db) as store:
+                    token = store.issue(
+                        "updater", frozenset({"records:write", "intents:read"}),
+                        frozenset({"client"}),
+                    )
+
+                class Allow:
+                    def may_update(self, principal_id, rrset):
+                        return principal_id == "updater"
+
+                def journal_factory():
+                    return SQLiteIntentJournal(db)
+
+                def orchestrator_factory(journal):
+                    return UpdateOrchestrator(Allow(), journal, self.backend())
+
+                def principals():
+                    with TokenStore(db) as store:
+                        return store.principals()
+
+                app = create_app(journal_factory, orchestrator_factory,
+                                 {"client": template}, principals)
+                calls = []
+
+                with TestClient(app) as http:
+                    def transport(session, method, url, **kwargs):
+                        calls.append((method.upper(), url))
+                        if url == "https://api.ipify.org":
+                            response = http.build_request("GET", "/health/live")
+                            # The updater's discovery is external to the DDNS
+                            # system; stub only the discovered public IPv4.
+                            class Discovery:
+                                status_code = 200
+                                text = "192.0.2.92"
+                                def close(self):
+                                    pass
+                            return Discovery()
+                        from urllib.parse import urlsplit
+                        route = urlsplit(url).path
+                        request = http.request(method.upper(), route,
+                                               headers=kwargs.get("headers"),
+                                               json=kwargs.get("json"))
+                        class Reply:
+                            status_code = request.status_code
+                            text = request.text
+                            def close(self):
+                                pass
+                        # Simulate a separate publishing process immediately
+                        # after durable acceptance, before the first poll.
+                        if method.upper() == "PUT" and request.status_code == 202:
+                            with journal_factory() as journal:
+                                report = PublicationWorker(
+                                    journal, orchestrator_factory(journal)).run_once()
+                                self.assertEqual(report.applied, 1)
+                        return Reply()
+
+                    with patch("requests.sessions.Session.request", transport):
+                        provider = provider_class(
+                            "local", {"base_url": "http://127.0.0.1:8765",
+                                      "record_id": "client", "token": token})
+                        self.assertTrue(provider.update_ddns())
+
+                self.assertEqual(self.backend().observe(desired), desired)
+                self.assertEqual([method for method, _ in calls],
+                                 ["GET", "PUT", "GET"])
+        finally:
+            sys.path.remove(client_source)
+
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
         record = RecordSet("example.test", "denied.example.test",
