@@ -7,6 +7,21 @@ LOG="$ROOT/$(date -u +%Y%m%dT%H%M%SZ)-$MODE.log"
 exec > >(tee "$LOG") 2>&1
 on_exit() { local code=$?; local result=FAIL; [[ $code -eq 0 ]] && result=PASS; echo "FINAL_RESULT=$result"; echo "LOG=$LOG"; printf '{"test":"%s","result":"%s","exit_code":%s}\n' "$MODE" "$result" "$code" > "$LOG.json"; }
 trap on_exit EXIT
+on_report_exit() {
+  local code=$?
+  trap - EXIT
+  local result=FAIL
+  [[ $code -eq 0 ]] && result=PASS
+  echo "FINAL_RESULT=$result"
+  echo "LOG=$LOG"
+  printf '{"test":"report","result":"%s","exit_code":%s}\n' "$result" "$code" > "$LOG.json"
+  # Stop the tee process from writing to the log before snapshotting.
+  exec 1>&- 2>&-
+  sleep 1
+  local archive="$HOME/uddns-validation-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+  tar -czf "$archive" -C "$HOME" uddns-results || exit 1
+}
+if [[ "$MODE" == report ]]; then trap on_report_exit EXIT; fi
 systemd-detect-virt --vm >/dev/null || { echo "Run only inside disposable VM" >&2; exit 2; }
 case "$MODE" in
 install)
@@ -145,8 +160,8 @@ report)
   sudo systemctl status --no-pager universalddns-api universalddns-worker named | sed -E 's/(Bearer )[[:graph:]]+/\1[REDACTED]/g' > "$ROOT/service-status.txt" || true
   sudo journalctl -u universalddns-api -u universalddns-worker -u named --since '1 day ago' --no-pager -n 300 | sed -E 's/(Bearer )[[:graph:]]+/\1[REDACTED]/g' > "$ROOT/journal-sanitized.txt" || true
   dpkg-query -W bind9 python3 > "$ROOT/packages.txt"
-  tar -czf "$HOME/uddns-validation-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" -C "$HOME" uddns-results
-  echo "Report is in HOME, not in uddns-results; review for secrets before sharing."
+  echo "Report collection complete; archive will be generated after final PASS/FAIL is logged."
+  ;;
   ;;
 *) echo "Usage: bash vm-test.sh {install|verify|update|backup|restore|recovery|report}" >&2;exit 2;;
 esac
