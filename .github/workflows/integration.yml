@@ -31,7 +31,7 @@ jobs:
       - name: Validate deployment scripts and simulated recovery
         run: |
           sh -n deploy/smoke-check.sh deploy/validate-install.sh
-          bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh tests/deployment/check-offline-restore.sh tests/deployment/restrict-vm-tsig.sh
+          bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh tests/deployment/check-offline-restore.sh tests/deployment/restrict-vm-tsig.sh tests/deployment/update-vm.sh
           python -m py_compile tests/deployment/check-restore.py tests/deployment/check-recovery.py tests/deployment/check-inflight.py tests/deployment/check-tsig-deny.py
           python tests/deployment/check-inflight.py
       - name: Validate systemd unit syntax
