@@ -1,0 +1,8 @@
+*.qcow2
+*.img
+*.iso
+*.tar.gz
+*.log
+*token*
+*secret*
+__pycache__/
