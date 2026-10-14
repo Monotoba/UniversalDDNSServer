@@ -185,6 +185,21 @@ class SQLiteIntentJournal:
         ).fetchall()
         return tuple(self.get(identifier) for (identifier,) in ids)
 
+    def list_by_state(self, states: tuple[str, ...], *, limit: int = 100) -> tuple[UpdateIntent, ...]:
+        """Bounded operator listing; the state list is validated, never interpolated."""
+        allowed = {"pending", "applying", "applied", "failed"}
+        if not states or any(state not in allowed for state in states):
+            raise ValueError("invalid intent states")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        marks = ",".join("?" for _ in states)
+        rows = self._db.execute(
+            "SELECT identifier FROM update_intents WHERE state IN (" + marks + ") "
+            "ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (*states, limit),
+        ).fetchall()
+        return tuple(self.get(identifier) for (identifier,) in rows)
+
     def interrupted(self) -> tuple[UpdateIntent, ...]:
         ids = self._db.execute(
             "SELECT identifier FROM update_intents WHERE state='applying' ORDER BY created_at,rowid"
