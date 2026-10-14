@@ -48,3 +48,7 @@ The uploaded `uddns-validation-20261014T130728Z.tar.gz` contains `20261014T13071
 ## Post-policy-maintenance archive 20261014T133250Z
 
 Archive reviewed: `20261014T133238Z-update.log.json` shows PASS with exit code 0 for authenticated API → worker → authoritative DNS publication. `20261014T133239Z-verify.log.json` likewise reports PASS with all three services active, successful credential/SQLite access and rejected anonymous API access. `20261014T133249Z-report.log.json` confirms report PASS. **Evidence boundary:** neither installed BIND policy text nor a negative TSIG write attempt against a different name is present, so least-privilege restriction on the existing VM is *not independently confirmed* by this archive.
+
+## Installed TSIG configuration inspection
+
+The VM operator ran `sudo grep -F "update-policy" /etc/bind/named.conf.local && sudo named-checkconf -z` on 2026-10-14. Output shows `update-policy { grant uddns-lab. name home.lab.invalid. A; };` and successful loading of the lab and built-in zones. This establishes the configured grant is now narrowed to a single A-record name. Actual denial of a differently named TSIG-signed update has not yet been exercised; preserve it as an outstanding negative test.
