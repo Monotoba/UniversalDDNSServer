@@ -9,8 +9,10 @@ API=universalddns-api
 WORKER=universalddns-worker
 [[ "$(hostname -s)" == uddns-prealpha ]] || { echo "Refusing unexpected hostname" >&2; exit 2; }
 systemd-detect-virt --vm >/dev/null || { echo "VM required" >&2; exit 2; }
-[[ -f "$DB" && -d "$REPO/.git" && -x "$VENV/bin/python" ]] || { echo "Installed deployment missing" >&2; exit 2; }
 sudo -n true || { echo "Passwordless sudo required for unattended recovery" >&2; exit 2; }
+sudo test -f "$DB" || { echo "SQLite file missing or inaccessible to root: $DB" >&2; exit 2; }
+sudo git -C "$REPO" rev-parse --is-inside-work-tree | grep -Fxq true || { echo "Git checkout invalid: $REPO" >&2; exit 2; }
+sudo test -x "$VENV/bin/python" || { echo "Virtual environment missing: $VENV" >&2; exit 2; }
 sudo systemctl is-active --quiet "$API"
 sudo systemctl is-active --quiet "$WORKER"
 [[ -z "$(sudo git -C "$REPO" status --porcelain)" ]] || { echo "Source checkout is dirty; refusing" >&2; exit 2; }
