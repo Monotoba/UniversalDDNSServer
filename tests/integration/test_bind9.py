@@ -443,6 +443,12 @@ class Bind9IntegrationTests(unittest.TestCase):
                             "dyndns", {"base_url": base, "hostname": name, "token": token})
                         self.assertTrue(dyn.update_ddns())
                         self.assertTrue(dyn.update_ddns())  # authoritative nochg
+                        from providers.ddns_provider import ProviderStopError
+                        denied = UniversalDDNSDynDNS2(
+                            "denied", {"base_url": base, "hostname": name,
+                                       "token": "x" * 48})
+                        with self.assertRaises(ProviderStopError):
+                            denied.update_ddns()
                     updated = RecordSet("example.test", name, "A",
                                         120, ("192.0.2.82",))
                     self.assertEqual(self.backend().observe(updated), updated)
