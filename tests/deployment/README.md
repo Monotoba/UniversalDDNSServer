@@ -50,3 +50,14 @@ The `inflight` test is a **deterministic simulated post-publication timeout** us
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 
 After preserving a VM snapshot or backing up the virtual disk, update the VM checkout and run `bash ~/vm-test.sh offline-restore`. This mode refuses non-VM hosts and hostnames other than `uddns-prealpha`, stops both app services, backs up the stopped SQLite database, restores the same snapshot via an atomic file replacement, verifies data, service-account ownership (`universalddns:universalddns`) and restrictive permissions (`0600`), then starts both services and performs installed-host verification. Failure cleanup attempts to restore the original and restart both services. **Do not run on production systems.** The operator should still retain an independent VM snapshot in case the guest or host crashes during file replacement.
+
+## Restrict TSIG policy on a previously installed VM
+
+The original test fixture permitted A/AAAA updates across the lab zone. The new fixture only permits the `home.lab.invalid.` A record. To migrate an **existing disposable VM** (never a production BIND configuration), run:
+
+```sh
+ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && sudo bash /opt/universalddns/src/tests/deployment/restrict-vm-tsig.sh'
+ssh ubuntu@VM_IP 'cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh && bash ~/vm-test.sh update && bash ~/vm-test.sh verify'
+```
+
+The migration refuses unexpected hostnames/configurations, keeps a local backup at `/etc/bind/named.conf.local.prealpha-backup`, validates BIND configuration before reload, and can be safely rerun when the restricted rule is already present. Review that backup as sensitive operational configuration. The `update` test verifies **allowed** publication only; denying another name under the same TSIG key must be separately verified before completing the security checklist.
