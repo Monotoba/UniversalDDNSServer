@@ -26,3 +26,7 @@ Generalized RRset types, transactional migration framework, production HTTPS exp
 ## Next action
 
 Implement Issue #4 first; do not perform another VM update until there's meaningful functional progress and automated tests are passing.
+
+## Issue #5 implementation status (2026-10-14)
+
+UDDNSUpdater now provides a discoverable `UniversalDDNSDynDNS2` adapter in `providers/provider_universalddns_dyndns2.py`, alongside the existing intent-aware REST adapter. The server CI pins UDDNSUpdater revision `2377a52c109dbb43cf624b147eaaf2483232db87`. Cross-repository isolated BIND 9 tests cover verified publication, unchanged responses, and denial of invalid credentials; the unchanged REST adapter remains tested. Both repositories' CI suites passed on this implementation. Issue #5 is closed. Next: Issue #6 installation and migration usability.
