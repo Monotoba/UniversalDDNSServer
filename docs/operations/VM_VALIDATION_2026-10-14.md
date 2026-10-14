@@ -36,3 +36,7 @@ User-operated `uddns-validation-20261014T123547Z.tar.gz` reviewed; raw archive r
 
 ### Evidence limits
 The restore was into a scratch database, not an offline cutover of the installed database. The worker was stopped **before** enqueueing, so an actual in-flight DNS operation was not interrupted. The JSON result files record PASS and exit code, but not independent request counts at the DNS transport layer. The report script's own `report.log` can be empty because it archives before its exit trap writes the final result.
+
+## Follow-up evidence: archive 20261014T125627Z
+
+Uploaded VM archive reviewed on 2026-10-14. `20261014T125601Z-inflight.log` and companion `.json` show PASS/exit_code 0 for deterministic lost-acknowledgement recovery. This uses disposable SQLite and a simulated backend; no actual in-flight SIGKILL or real RFC 2136 transport fault was injected. `20261014T125613Z-verify.log.json` reports PASS/exit_code 0. `20261014T125625Z-report.log` and `.json` now include the report's own final PASS/exit_code 0 within the archive; the archiving omission is corrected. Existing scratch restore and pending-worker restart PASS records remain present. Offline installed-database cutover and live transport fault injection remain outstanding.
