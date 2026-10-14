@@ -58,24 +58,31 @@ jobs:
           python -m build
           python -m twine check dist/*
           python - <<'PY'
-          import glob, tarfile, zipfile
+          import glob, tarfile, zipfile, tomllib
+          from email.parser import Parser
+          with open('pyproject.toml', 'rb') as fp:
+              version = tomllib.load(fp)['project']['version']
           wheel = glob.glob('dist/*.whl')
           sdist = glob.glob('dist/*.tar.gz')
           assert len(wheel) == len(sdist) == 1
-          assert '0.1.0a1' in wheel[0]
-          assert '0.1.0a1' in sdist[0]
+          assert f'universalddnsserver-{version}-' in wheel[0]
+          assert f'universalddnsserver-{version}.tar.gz' in sdist[0]
           with zipfile.ZipFile(wheel[0]) as z:
               names = z.namelist()
-              assert any(x.endswith('/METADATA') for x in names)
+              metadata_files = [x for x in names if x.endswith('.dist-info/METADATA')]
+              assert len(metadata_files) == 1
+              metadata = Parser().parsestr(z.read(metadata_files[0]).decode('utf-8'))
+              assert metadata['Name'].lower() == 'universalddnsserver'
+              assert metadata['Version'] == version
               assert any(x.startswith('universalddns/') for x in names)
           with tarfile.open(sdist[0]) as t:
               names = t.getnames()
               assert any(x.endswith('/pyproject.toml') for x in names)
               assert any(x.endswith('/README.md') for x in names)
-          print('PASS: wheel and sdist version, metadata and contents')
+          print(f'PASS: wheel and sdist version {version}, metadata and contents')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: universalddnsserver-v0.1.0a1-candidate
+          name: universalddnsserver-candidate
           path: dist/*
           if-no-files-found: error
