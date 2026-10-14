@@ -235,7 +235,6 @@ class Bind9IntegrationTests(unittest.TestCase):
                     def transport(session, method, url, **kwargs):
                         calls.append((method.upper(), url))
                         if url == "https://api.ipify.org":
-                            response = http.build_request("GET", "/health/live")
                             # The updater's discovery is external to the DDNS
                             # system; stub only the discovered public IPv4.
                             class Discovery:
