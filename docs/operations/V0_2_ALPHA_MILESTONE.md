@@ -28,3 +28,7 @@ Production TLS and internet exposure, distributed throttling, HA, authoritative 
 
 ## Process
 New findings are logged as issues. They do not change this release gate unless an actual security or data-loss blocker is demonstrated. Separate follow-up enhancements from release prerequisites.
+
+## Issue #1 implementation note
+
+Operator recovery now returns distinct process exit statuses: `0` successful operation/verified reconciliation, `3` missing intent, `4` invalid state or authorization refusal, `5` DNS observation unavailable, and `6` observation succeeded but RRset still differs (left unresolved). Standard JSON is emitted for a successful observation, including the unresolved result; diagnostic errors go to stderr. Reconciliation is **observation-only** and will not retry writes. Operator permissions remain restricted to the local service account. This change does not imply the complete issue is closed until the remaining acceptance criteria have been checked.
