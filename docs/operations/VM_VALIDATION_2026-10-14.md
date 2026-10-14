@@ -44,3 +44,7 @@ Uploaded VM archive reviewed on 2026-10-14. `20261014T125601Z-inflight.log` and 
 ## Offline database cutover: archive 20261014T130728Z
 
 The uploaded `uddns-validation-20261014T130728Z.tar.gz` contains `20261014T130716Z-offline-restore.log` and its machine-readable JSON result (`PASS`, exit code 0). Both application services were stopped for an offline database snapshot restoration. The test confirmed snapshot contents, `universalddns:universalddns` ownership and mode `0600`, then restarted API and worker. The nested installed-host verification reported all API, worker and BIND services active, SQLite and credential access valid, API liveness passed and anonymous intent access denied. Report generation itself recorded `PASS` within the archive. This restored a known-good snapshot, not a disaster-recovery exercise involving lost/corrupt state, and no update was in flight during the cutover.
+
+## Post-policy-maintenance archive 20261014T133250Z
+
+Archive reviewed: `20261014T133238Z-update.log.json` shows PASS with exit code 0 for authenticated API → worker → authoritative DNS publication. `20261014T133239Z-verify.log.json` likewise reports PASS with all three services active, successful credential/SQLite access and rejected anonymous API access. `20261014T133249Z-report.log.json` confirms report PASS. **Evidence boundary:** neither installed BIND policy text nor a negative TSIG write attempt against a different name is present, so least-privilege restriction on the existing VM is *not independently confirmed* by this archive.
