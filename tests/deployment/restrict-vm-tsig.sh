@@ -17,7 +17,7 @@ data = p.read_text()
 if data.count(new) == 1 and old not in data:
     print("Already restricted; no modification required")
 elif data.count(old) == 1 and new not in data:
-    p.with_suffix(".conf.local.prealpha-backup").write_text(data)
+    Path(str(p) + ".prealpha-backup").write_text(data)
     p.write_text(data.replace(old, new))
     print("Restricted TSIG rule for lab fixture")
 else:
