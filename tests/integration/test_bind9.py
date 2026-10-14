@@ -274,6 +274,115 @@ class Bind9IntegrationTests(unittest.TestCase):
         finally:
             sys.path.remove(client_source)
 
+
+    def test_separate_http_and_worker_processes_with_updater(self):
+        """Run actual localhost HTTP and worker processes against isolated named."""
+        import json
+        import sys
+        import requests
+        from unittest.mock import patch
+        from urllib.parse import urlsplit
+        from uuid import uuid4
+
+        source = os.environ.get("UDDNS_UPDATER_SOURCE")
+        if not source:
+            self.skipTest("UDDNS_UPDATER_SOURCE checkout not configured")
+        sys.path.insert(0, source)
+        try:
+            from providers.provider_universalddns import UniversalDDNSServer
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                db = root / "state.sqlite3"
+                secret = root / "tsig.json"
+                secret.write_text(json.dumps({"key_secret": self.secret}))
+                secret.chmod(0o600)
+                name = "process-" + uuid4().hex[:12] + ".example.test"
+                with socket.socket() as sock:
+                    sock.bind(("127.0.0.1", 0))
+                    api_port = sock.getsockname()[1]
+                config = root / "config.json"
+                config.write_text(json.dumps({
+                    "database": str(db), "credentials": str(secret),
+                    "dns": {"zone": "example.test", "server": "127.0.0.1",
+                            "port": self.port, "key_name": "ddns-key."},
+                    "interval": 0.2,
+                    "records": {"process": {"name": name, "type": "A",
+                                            "ttl": 120, "address": "192.0.2.80"}},
+                }))
+                from universalddns.token_store import TokenStore
+                with TokenStore(db) as store:
+                    token = store.issue(
+                        "client", frozenset({"records:write", "intents:read"}),
+                        frozenset({"process"}),
+                    )
+                env = os.environ.copy()
+                env["UNIVERSALDDNS_CONFIG"] = str(config)
+                api = subprocess.Popen([
+                    sys.executable, "-m", "uvicorn",
+                    "universalddns.runtime:api_app", "--factory",
+                    "--host", "127.0.0.1", "--port", str(api_port),
+                    "--workers", "1", "--no-access-log",
+                ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                worker = None
+                try:
+                    base = f"http://127.0.0.1:{api_port}"
+                    for _ in range(100):
+                        if api.poll() is not None:
+                            raise RuntimeError("API terminated during startup")
+                        try:
+                            response = requests.get(base + "/health/live", timeout=0.2)
+                            if response.status_code == 200:
+                                break
+                        except requests.RequestException:
+                            time.sleep(0.1)
+                    else:
+                        self.fail("local API failed startup")
+                    worker = subprocess.Popen([
+                        sys.executable, "-m", "universalddns.runtime",
+                        "--config", str(config),
+                    ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # Stub only the external public-IP discovery request.
+                    original_get = requests.get
+                    def discovered(url, *args, **kwargs):
+                        if url == "https://api.ipify.org":
+                            class Discovery:
+                                status_code = 200
+                                text = "192.0.2.81"
+                                def close(self):
+                                    pass
+                            return Discovery()
+                        return original_get(url, *args, **kwargs)
+                    with patch("requests.get", side_effect=discovered):
+                        adapter = UniversalDDNSServer(
+                            "integration", {"base_url": base, "record_id": "process",
+                                            "token": token})
+                        # Polling an async queue may need multiple executions;
+                        # the stable idempotency key prevents duplicate intents.
+                        for _ in range(30):
+                            try:
+                                if adapter.update_ddns():
+                                    break
+                            except Exception:
+                                time.sleep(0.2)
+                        else:
+                            self.fail("updater did not observe applied status")
+                    expected = RecordSet("example.test", name, "A",
+                                         120, ("192.0.2.81",))
+                    self.assertEqual(self.backend().observe(expected), expected)
+                finally:
+                    for process in (worker, api):
+                        if process is not None:
+                            process.terminate()
+                            try:
+                                process.wait(timeout=10)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait(timeout=5)
+                    if api.stderr:
+                        api.stderr.close()
+        finally:
+            sys.path.remove(source)
+
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
         record = RecordSet("example.test", "denied.example.test",
