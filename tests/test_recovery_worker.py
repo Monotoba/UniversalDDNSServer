@@ -1,4 +1,5 @@
 import sqlite3
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,7 +44,10 @@ class RecoveryWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once().inspected, 0)
                 with sqlite3.connect(path) as db:
                     db.execute("UPDATE update_intents SET lease_expires_at=0")
-                self.assertEqual(worker.run_once().unresolved, 1)
+                with self.assertLogs("universalddns.audit", logging.INFO) as captured:
+                    self.assertEqual(worker.run_once().unresolved, 1)
+                self.assertTrue(any("recovery_unresolved" in record for record in captured.output))
+                self.assertTrue(any("recovery_batch_completed" in record for record in captured.output))
                 self.assertEqual(backend.writes, 0)
                 backend.observed = rrset
                 self.assertEqual(worker.run_once().verified, 1)
