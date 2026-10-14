@@ -7,6 +7,11 @@ DB=/var/lib/universalddns/state.sqlite3
 WORK_ROOT=/var/lib/universalddns
 API=universalddns-api
 WORKER=universalddns-worker
+MODE="${1:-update}"
+if [[ $# -gt 1 || "$MODE" != update && "$MODE" != --verify ]]; then
+  echo "Usage: bash update-vm.sh [--verify]" >&2
+  exit 2
+fi
 [[ "$(hostname -s)" == uddns-prealpha ]] || { echo "Refusing unexpected hostname" >&2; exit 2; }
 systemd-detect-virt --vm >/dev/null || { echo "VM required" >&2; exit 2; }
 sudo -n true || { echo "Passwordless sudo required for unattended recovery" >&2; exit 2; }
@@ -15,6 +20,13 @@ sudo git -C "$REPO" rev-parse --is-inside-work-tree | grep -Fxq true || { echo "
 sudo test -x "$VENV/bin/python" || { echo "Virtual environment missing: $VENV" >&2; exit 2; }
 sudo systemctl is-active --quiet "$API"
 sudo systemctl is-active --quiet "$WORKER"
+if [[ "$MODE" == "--verify" ]]; then
+  echo "Checking installed Python distribution and runtime services (no Git update)"
+  sudo "$VENV/bin/python" -m pip show universalddnsserver || exit 1
+  bash "$REPO/tests/deployment/vm-test.sh" verify
+  echo "FINAL_RESULT=PASS"
+  exit 0
+fi
 [[ -z "$(sudo git -C "$REPO" status --porcelain)" ]] || { echo "Source checkout is dirty; refusing" >&2; exit 2; }
 BEFORE=$(sudo git -C "$REPO" rev-parse HEAD)
 sudo git -C "$REPO" fetch --prune origin main
