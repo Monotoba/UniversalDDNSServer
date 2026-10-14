@@ -33,6 +33,12 @@ To revoke a token, pipe it into the local admin command with `revoke --token-std
 
 Install `deploy/universalddns-api.service` and `deploy/universalddns-worker.service` into `/etc/systemd/system/`, then run `systemctl daemon-reload`. For a controlled local experiment, enable and start the API and worker separately. Inspect service logs using `journalctl -u universalddns-api` and `journalctl -u universalddns-worker`. The API binds only to 127.0.0.1:8765; the worker runs independently.
 
+## Security and deployment checklist
+
+The publishing worker rechecks the principal's **current** record-write authorization before it publishes a pending intent; revoking the final eligible token before a worker claims that intent causes it to fail without a DNS write. Revocation cannot cancel an update already in flight. A principal with another valid credential granting access remains authorized. Review revocation behavior and the distinction between `failed` and ambiguous DNS outcomes before operating a deployment.
+
+Before starting services, verify that the service account can read the credential file and write the state directory, the BIND TSIG key can modify **only** intended records, and `/etc/universalddns/tsig.json` is not a symlink. Verify both unit files with `systemd-analyze verify`. The integration CI covers Python 3.11–3.13, but a fresh-host Ubuntu installation, reboot persistence, package upgrades, backup restoration, and actual systemd activation are separate manual release gates.
+
 ## Local acceptance checks
 
 Run `deploy/smoke-check.sh` from the checkout after the API service starts. It checks loopback liveness and confirms that an unauthenticated intent query returns HTTP 401. This smoke check **does not modify DNS** and is not a substitute for a host systemd installation test. Verify systemd unit syntax with `systemd-analyze verify` and inspect `systemctl status universalddns-api universalddns-worker` on the target machine. To verify actual publication, use a disposable test zone and confirm the intended A/AAAA RRset directly at its authoritative nameserver. Do not run this against live production zones.
