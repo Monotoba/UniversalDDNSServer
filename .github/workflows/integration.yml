@@ -28,8 +28,9 @@ jobs:
         run: sudo install -m 755 /usr/sbin/named /usr/local/bin/ddns-ci-named
       - name: Install package
         run: python -m pip install -e '.[api,dev]' requests
-      - name: Validate deployment shell script syntax
-        run: sh -n deploy/smoke-check.sh deploy/validate-install.sh
+      - name: Validate deployment scripts and simulated recovery
+        run: |
+          sh -n deploy/smoke-check.sh deploy/validate-install.sh
           bash -n tests/deployment/create-vm.sh tests/deployment/vm-test.sh tests/deployment/check-offline-restore.sh
           python -m py_compile tests/deployment/check-restore.py tests/deployment/check-recovery.py tests/deployment/check-inflight.py
           python tests/deployment/check-inflight.py
@@ -42,3 +43,39 @@ jobs:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
           UDDNS_UPDATER_SOURCE: ${{ github.workspace }}/updater
         run: python -m unittest discover -s tests/integration -p 'test_*.py' -v
+
+  release-packaging:
+    name: Build pre-alpha wheel and source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build and inspect package metadata
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+          python - <<'PY'
+          import glob, tarfile, zipfile
+          wheel = glob.glob('dist/*.whl')
+          sdist = glob.glob('dist/*.tar.gz')
+          assert len(wheel) == len(sdist) == 1
+          assert '0.1.0a1' in wheel[0]
+          assert '0.1.0a1' in sdist[0]
+          with zipfile.ZipFile(wheel[0]) as z:
+              names = z.namelist()
+              assert any(x.endswith('/METADATA') for x in names)
+              assert any(x.startswith('universalddns/') for x in names)
+          with tarfile.open(sdist[0]) as t:
+              names = t.getnames()
+              assert any(x.endswith('/pyproject.toml') for x in names)
+              assert any(x.endswith('/README.md') for x in names)
+          print('PASS: wheel and sdist version, metadata and contents')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: universalddnsserver-v0.1.0a1-candidate
+          path: dist/*
+          if-no-files-found: error
