@@ -22,6 +22,8 @@ ssh ubuntu@VM_IP 'cloud-init status --wait'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh install'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh verify'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh backup'
+ssh ubuntu@VM_IP 'bash ~/vm-test.sh restore'
+ssh ubuntu@VM_IP 'bash ~/vm-test.sh recovery'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh report'
 scp 'ubuntu@VM_IP:uddns-validation-*.tar.gz' .
 ```
@@ -32,4 +34,12 @@ The launcher stores the cached Ubuntu cloud image in `~/VMs/uddns-prealpha` but 
 
 The guest script installs an isolated BIND 9 lab zone (`lab.invalid`), a loopback-only HTTP API, and the publishing worker. Its test results are not proof of production security or public deployment readiness.
 
-**Archive path:** reports are generated in `/home/ubuntu/uddns-validation-TIMESTAMP.tar.gz`, *not* `~/uddns-results/`. Review before sharing; logs can contain sensitive data. The backup check validates a SQLite copy but does not restore the live database. An actual restore and interrupted-worker test remain separate release gates.
+**Archive path:** reports are generated in `/home/ubuntu/uddns-validation-TIMESTAMP.tar.gz`, *not* `~/uddns-results/`. Review before sharing; logs can contain sensitive data. The restore test makes a SQLite online backup and restores into a separate scratch database, comparing all table contents to the original; it never replaces the live database. The recovery test stops the worker **before** queuing an update, verifies persisted pending intent and idempotency, restarts the worker, and checks authoritative DNS. It does not cover a crash during an in-flight DNS publication or prove exactly-once transport.
+
+For a VM installed from an earlier checkout, first update the guest repository and copy the new script into the home directory:
+
+```sh
+ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh'
+```
+
+Each mode writes a `*.log.json` with test name, PASS/FAIL and exit code under `~/uddns-results/`. Keep the local token outside Git; inspect report archives before sharing.
