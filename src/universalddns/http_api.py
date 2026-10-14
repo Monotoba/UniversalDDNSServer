@@ -1,5 +1,6 @@
 """Pre-alpha authenticated HTTP intake; DNS network writes belong to workers."""
 import hashlib
+import ipaddress
 import hmac
 import re
 import time
@@ -8,6 +9,7 @@ from threading import Lock
 from typing import Callable
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .audit import audit
@@ -137,6 +139,67 @@ def create_app(
         audit("update_submitted", principal=principal.identifier,
               record=record_id, intent=intent.identifier)
         return {"intent_id": intent.identifier, "status": intent.state.value}
+
+
+    @app.get("/nic/update", response_class=PlainTextResponse)
+    def dyndns2(request: Request, authorization: str | None = Header(default=None)):
+        """Experimental DynDNS2 subset: Basic token auth; queued is NOT published."""
+        from .intents import PermissionDenied
+        import base64
+        from binascii import Error as Base64Error
+
+        def answer(message: str) -> PlainTextResponse:
+            return PlainTextResponse(message + "\\n", media_type="text/plain")
+
+        token = ""
+        if authorization and authorization.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
+                _, token = decoded.split(":", 1)
+            except (Base64Error, UnicodeDecodeError, ValueError):
+                pass
+        if not token:
+            audit("dyndns_authentication_denied", reason="missing_basic_token")
+            return answer("badauth")
+        try:
+            principal = authenticated(request, "Bearer " + token, "records:write")
+        except HTTPException as exc:
+            return answer("911" if exc.status_code == 429 else "badauth")
+
+        params = request.query_params
+        if set(params.keys()) - {"hostname", "myip"}:
+            return answer("badagent")
+        hostname = params.get("hostname", "")
+        address = params.get("myip", "")
+        if not hostname or "," in hostname:
+            return answer("notfqdn")
+        matches = [(rid, rr) for rid, rr in records.items()
+                   if rr.name.rstrip(".").lower() == hostname.rstrip(".").lower()
+                   and rid in principal.record_ids]
+        if len(matches) != 1:
+            audit("dyndns_record_denied", principal=principal.identifier)
+            return answer("nohost")
+        record_id, template = matches[0]
+        try:
+            value = ipaddress.ip_address(address)
+            if value.version != (4 if template.record_type == "A" else 6):
+                return answer("dnserr")
+            rrset = RecordSet(template.zone, template.name, template.record_type,
+                              template.ttl, (str(value),))
+        except ValueError:
+            return answer("dnserr")
+        # Response 911 explicitly signals a transient condition: do not report good
+        # before the separately supervised worker has actually published DNS.
+        with journal_factory() as journal:
+            try:
+                intent = orchestrator_factory(journal).submit(principal.identifier, rrset)
+            except PermissionDenied:
+                return answer("badauth")
+            except (UpdateConflict, ValueError):
+                return answer("dnserr")
+        audit("dyndns_update_queued", principal=principal.identifier,
+              record=record_id, intent=intent.identifier)
+        return answer("911")
 
     @app.get("/api/v1/intents/{intent_id}")
     def status(intent_id: str, request: Request,
