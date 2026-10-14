@@ -111,21 +111,21 @@ class HTTPTests(unittest.TestCase):
             return {"Authorization": "Basic " + encoded}
 
         url = "/nic/update"
-        self.assertEqual("badauth\\n", self.client.get(url).text)
-        self.assertEqual("badauth\\n", self.client.get(
+        self.assertEqual("badauth\n", self.client.get(url).text)
+        self.assertEqual("badauth\n", self.client.get(
             url, params={"hostname": "host.example.org", "myip": "192.0.2.20"},
             headers=basic("invalid")).text)
-        self.assertEqual("nohost\\n", self.client.get(
+        self.assertEqual("nohost\n", self.client.get(
             url, params={"hostname": "other.example.org", "myip": "192.0.2.20"},
             headers=basic(self.alice)).text)
-        self.assertEqual("dnserr\\n", self.client.get(
+        self.assertEqual("dnserr\n", self.client.get(
             url, params={"hostname": "host.example.org", "myip": "::1"},
             headers=basic(self.alice)).text)
         response = self.client.get(
             url, params={"hostname": "host.example.org", "myip": "192.0.2.20"},
             headers=basic(self.alice))
         self.assertEqual(200, response.status_code)
-        self.assertEqual("911\\n", response.text)
+        self.assertEqual("911\n", response.text)
         with SQLiteIntentJournal(self.path) as journal:
             intents = journal.list_by_state(("pending",), limit=10)
             self.assertEqual(1, len(intents))
