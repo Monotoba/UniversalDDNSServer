@@ -3,9 +3,9 @@ import argparse
 import json
 import sys
 
-from .intents import UnknownIntent, UpdateConflict, PermissionDenied
+from dns.exception import DNSException
 
-from .intents import UpdateState
+from .intents import PermissionDenied, UnknownIntent, UpdateConflict, UpdateState
 from .runtime import factories, load_settings
 
 
@@ -59,7 +59,7 @@ def main():
     except (UpdateConflict, PermissionDenied) as exc:
         print(f"operation refused: {exc}", file=sys.stderr)
         return 4
-    except (OSError, TimeoutError) as exc:
+    except (OSError, TimeoutError, DNSException) as exc:
         print(f"authoritative observation unavailable: {type(exc).__name__}", file=sys.stderr)
         return 5
     print(json.dumps(result, sort_keys=True, indent=2))
