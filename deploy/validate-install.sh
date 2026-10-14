@@ -1,10 +1,10 @@
 #!/bin/sh
 # Read-only acceptance checks on an installed local UniversalDDNSServer.
 set -eu
-CONFIG="\${1:-/etc/universalddns/config.json}"
-SERVICE_USER="\${SERVICE_USER:-universalddns}"
-API_UNIT="\${API_UNIT:-universalddns-api.service}"
-WORKER_UNIT="\${WORKER_UNIT:-universalddns-worker.service}"
+CONFIG="${1:-/etc/universalddns/config.json}"
+SERVICE_USER="${SERVICE_USER:-universalddns}"
+API_UNIT="${API_UNIT:-universalddns-api.service}"
+WORKER_UNIT="${WORKER_UNIT:-universalddns-worker.service}"
 
 test -f "$CONFIG" || { echo "Configuration is missing" >&2; exit 1; }
 test -x /opt/universalddns/venv/bin/python || { echo "Installed Python environment missing" >&2; exit 1; }
