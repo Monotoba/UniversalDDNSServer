@@ -52,5 +52,48 @@ class OperatorInspectionTests(unittest.TestCase):
             self.assertEqual(4, main())
 
 
+    def test_reconcile_statuses_do_not_retry(self):
+        from dns.exception import DNSException
+        from universalddns.intents import UpdateState
+
+        class Journal:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class Orchestrator:
+            def __init__(self, outcome):
+                self.outcome = outcome
+
+            def reconcile(self, identifier, *, retry=False):
+                self.assert_no_retry(retry)
+                if isinstance(self.outcome, Exception):
+                    raise self.outcome
+                return self.outcome
+
+            @staticmethod
+            def assert_no_retry(retry):
+                assert retry is False
+
+        rrset = RecordSet("lab.invalid", "home.lab.invalid", "A", 60,
+                          ("192.0.2.19",))
+        from universalddns.intents import UpdateIntent
+        for state, expected in ((UpdateState.FAILED, 6), (UpdateState.APPLIED, 0)):
+            intent = UpdateIntent("intent-id", "principal", rrset, state)
+            argv = ["operator", "--config", "test-config", "reconcile", "intent-id"]
+            with (patch("sys.argv", argv),
+                  patch("universalddns.operator.load_settings"),
+                  patch("universalddns.operator.factories",
+                        return_value=(Journal, lambda _: Orchestrator(intent), None))):
+                self.assertEqual(expected, main())
+        argv = ["operator", "--config", "test-config", "reconcile", "intent-id"]
+        with (patch("sys.argv", argv),
+              patch("universalddns.operator.load_settings"),
+              patch("universalddns.operator.factories",
+                    return_value=(Journal, lambda _: Orchestrator(DNSException("unavailable")), None))):
+            self.assertEqual(5, main())
+
 if __name__ == "__main__":
     unittest.main()
