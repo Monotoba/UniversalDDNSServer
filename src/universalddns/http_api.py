@@ -72,6 +72,7 @@ def create_app(
     principals: tuple[APIPrincipal, ...] | Callable[[], tuple[APIPrincipal, ...]],
     *,
     rate_limit: int = 60,
+    dyndns_wait_seconds: float = 5.0,
 ) -> FastAPI:
     """Create an API using server-owned record mapping and token-hash configuration.
 
@@ -80,6 +81,8 @@ def create_app(
     current = principals() if callable(principals) else principals
     if not current or not records:
         raise ValueError("API requires configured principals and managed records")
+    if not 0 <= dyndns_wait_seconds <= 30:
+        raise ValueError('invalid DynDNS2 confirmation timeout')
     gate = RateGate(rate_limit)
     app = FastAPI(title="UniversalDDNSServer", version="0.2.0a1")
 
@@ -188,8 +191,7 @@ def create_app(
                               template.ttl, (str(value),))
         except ValueError:
             return answer("dnserr")
-        # Response 911 explicitly signals a transient condition: do not report good
-        # before the separately supervised worker has actually published DNS.
+        # Publication occurs exclusively in the separate worker.
         with journal_factory() as journal:
             try:
                 intent = orchestrator_factory(journal).submit(principal.identifier, rrset)
@@ -199,6 +201,16 @@ def create_app(
                 return answer("dnserr")
         audit("dyndns_update_queued", principal=principal.identifier,
               record=record_id, intent=intent.identifier)
+        deadline = time.monotonic() + dyndns_wait_seconds
+        while time.monotonic() < deadline:
+            with journal_factory() as journal:
+                state = journal.get(intent.identifier).state.value
+            if state == "applied":
+                audit("dyndns_update_confirmed", intent=intent.identifier)
+                return answer("good " + str(value))
+            if state == "failed":
+                return answer("911")
+            time.sleep(0.1)
         return answer("911")
 
     @app.get("/api/v1/intents/{intent_id}")
