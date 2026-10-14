@@ -25,6 +25,7 @@ ssh ubuntu@VM_IP 'bash ~/vm-test.sh backup'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh restore'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh recovery'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh inflight'
+ssh ubuntu@VM_IP 'bash ~/vm-test.sh tsig-deny'
 ssh ubuntu@VM_IP 'bash ~/vm-test.sh report'
 scp 'ubuntu@VM_IP:uddns-validation-*.tar.gz' .
 ```
@@ -61,3 +62,5 @@ ssh ubuntu@VM_IP 'cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-tes
 ```
 
 The migration refuses unexpected hostnames/configurations, keeps a local backup at `/etc/bind/named.conf.local.prealpha-backup`, validates BIND configuration before reload, and can be safely rerun when the restricted rule is already present. Review that backup as sensitive operational configuration. The `update` test verifies **allowed** publication only; denying another name under the same TSIG key must be separately verified before completing the security checklist.
+
+The `tsig-deny` mode reads the installed lab TSIG key as root, sends a signed update for `disallowed-tsig-probe.lab.invalid.` to the loopback BIND server, asserts an RFC 2136 `REFUSED` response, and verifies the prohibited record remains absent. It first checks the expected VM name and installed lab-zone policy. It never prints the secret.
