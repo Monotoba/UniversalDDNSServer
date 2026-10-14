@@ -1,6 +1,9 @@
 """Local operator CLI for durable update intents (never exposed via HTTP)."""
 import argparse
 import json
+import sys
+
+from .intents import UnknownIntent, UpdateConflict, PermissionDenied
 
 from .intents import UpdateState
 from .runtime import factories, load_settings
@@ -38,20 +41,32 @@ def main():
     args = parser.parse_args()
     settings = load_settings(args.config)
     journal_factory, orchestrator_factory, _ = factories(settings)
-    with journal_factory() as journal:
-        if args.operation == "list":
-            states = tuple(args.state or ["pending", "applying", "failed"])
-            result = [describe(intent) for intent in
-                      journal.list_by_state(states, limit=args.limit)]
-        elif args.operation == "show":
-            result = describe(journal.get(args.identifier))
-        else:
-            # No implicit retry: a mismatched or unavailable observation leaves
-            # the intent unresolved. Operators must not reissue uncertain writes.
-            intent = orchestrator_factory(journal).reconcile(args.identifier, retry=False)
-            result = describe(intent)
+    try:
+        with journal_factory() as journal:
+            if args.operation == "list":
+                states = tuple(args.state or ["pending", "applying", "failed"])
+                result = [describe(intent) for intent in
+                          journal.list_by_state(states, limit=args.limit)]
+            elif args.operation == "show":
+                result = describe(journal.get(args.identifier))
+            else:
+                # Observation only: no automatic or implicit DNS retry.
+                intent = orchestrator_factory(journal).reconcile(args.identifier, retry=False)
+                result = describe(intent)
+    except UnknownIntent:
+        print("intent not found", file=sys.stderr)
+        return 3
+    except (UpdateConflict, PermissionDenied) as exc:
+        print(f"operation refused: {exc}", file=sys.stderr)
+        return 4
+    except (OSError, TimeoutError) as exc:
+        print(f"authoritative observation unavailable: {type(exc).__name__}", file=sys.stderr)
+        return 5
     print(json.dumps(result, sort_keys=True, indent=2))
+    if args.operation == "reconcile" and result["state"] != "applied":
+        return 6
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
