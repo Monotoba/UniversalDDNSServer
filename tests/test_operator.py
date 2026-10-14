@@ -42,16 +42,14 @@ class OperatorInspectionTests(unittest.TestCase):
                 raise UnknownIntent(identifier)
 
         argv = ["uddns-operator", "--config", "test-config", "show", "missing"]
-        with patch("sys.argv", argv), patch("universalddns.operator.load_settings"), \\
-                patch("universalddns.operator.factories", return_value=(Journal, None, None)):
+        with (patch("sys.argv", argv), patch("universalddns.operator.load_settings"), patch("universalddns.operator.factories", return_value=(Journal, None, None))):
             self.assertEqual(3, main())
 
         class ConflictJournal(Journal):
             def get(self, identifier):
                 raise UpdateConflict("unresolved")
 
-        with patch("sys.argv", argv), patch("universalddns.operator.load_settings"), \\
-                patch("universalddns.operator.factories", return_value=(ConflictJournal, None, None)):
+        with (patch("sys.argv", argv), patch("universalddns.operator.load_settings"), patch("universalddns.operator.factories", return_value=(ConflictJournal, None, None))):
             self.assertEqual(4, main())
 
 
