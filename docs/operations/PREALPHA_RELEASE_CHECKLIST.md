@@ -20,7 +20,8 @@ This is a candidate release checklist, **not** evidence that a release exists.
 - [x] Perform a SQLite online backup and scratch-database restore, verify integrity and compare all tables (twice on Ubuntu VM; live database left intact).
 - [x] Verify guarded VM offline restoration of a stopped SQLite database, matching snapshot contents, restored ownership/permissions and API/worker startup (archive `uddns-validation-20261014T130728Z.tar.gz`).
 - [x] Perform source/configuration security review and document limitations in [security review](SECURITY_REVIEW_2026-10-14.md).
-- [ ] Confirm tightened BIND TSIG policy on the existing VM and document firewall, logging retention and secrets handling for any non-lab deployment.
+- [x] Confirm tightened BIND TSIG policy on the installed VM by denying unauthorized DNS name updates (`REFUSED`) while allowing the intended update; see [VM evidence](VM_VALIDATION_2026-10-14.md).
+- [ ] Document firewall, logging retention and secrets handling for any non-lab deployment; production deployment remains unsupported.
 - [x] Align package version to `0.1.0a1`; build and inspect wheel/sdist in CI (successful [candidate packaging run](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38571534584)).
 - [ ] Complete final release artifact audit, verify all desired tests, review immutable tag against candidate artifacts and approve publication.
 
