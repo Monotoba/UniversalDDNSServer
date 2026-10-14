@@ -52,3 +52,7 @@ Archive reviewed: `20261014T133238Z-update.log.json` shows PASS with exit code 0
 ## Installed TSIG configuration inspection
 
 The VM operator ran `sudo grep -F "update-policy" /etc/bind/named.conf.local && sudo named-checkconf -z` on 2026-10-14. Output shows `update-policy { grant uddns-lab. name home.lab.invalid. A; };` and successful loading of the lab and built-in zones. This establishes the configured grant is now narrowed to a single A-record name. Actual denial of a differently named TSIG-signed update has not yet been exercised; preserve it as an outstanding negative test.
+
+## Enforced TSIG policy: archive 20261014T135112Z
+
+The uploaded archive contains `20261014T135039Z-tsig-deny.log` and JSON `PASS` (exit 0): BIND returned `REFUSED` to a TSIG-signed attempted A update for `disallowed-tsig-probe.lab.invalid.` and the record remained absent. `20261014T135059Z-update.log` and JSON `PASS` (exit 0) confirm the normal authenticated API → worker → authoritative BIND A update still succeeds. The archived report log and JSON record are complete and report `PASS`. GitHub CI for source commit `f139b595` passed static quality, unit/docs and integration/packaging tests. No claim of security certification or production readiness is implied.
