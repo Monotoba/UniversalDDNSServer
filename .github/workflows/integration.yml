@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Monotoba/UDDNSUpdater
-          ref: e15a350be0d5b59ea116c1a96444884df6f70c8f
+          ref: 2124f0c592b7e1ea9c1e57bdeb116096f3e68c75
           path: updater
       - uses: actions/setup-python@v5
         with:
