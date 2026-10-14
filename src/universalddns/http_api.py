@@ -193,12 +193,23 @@ def create_app(
             return answer("dnserr")
         # Publication occurs exclusively in the separate worker.
         with journal_factory() as journal:
+            orchestrator = orchestrator_factory(journal)
             try:
-                intent = orchestrator_factory(journal).submit(principal.identifier, rrset)
+                if orchestrator.is_current(principal.identifier, rrset):
+                    audit("dyndns_unchanged", principal=principal.identifier,
+                          record=record_id)
+                    return answer("nochg " + str(value))
+            except PermissionDenied:
+                return answer("badauth")
+            except Exception:
+                # Observation is not proof of absence when the DNS backend fails.
+                return answer("911")
+            try:
+                intent = orchestrator.submit(principal.identifier, rrset)
             except PermissionDenied:
                 return answer("badauth")
             except (UpdateConflict, ValueError):
-                return answer("dnserr")
+                return answer("911")
         audit("dyndns_update_queued", principal=principal.identifier,
               record=record_id, intent=intent.identifier)
         deadline = time.monotonic() + dyndns_wait_seconds
