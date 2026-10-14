@@ -1,4 +1,5 @@
 """Authorization-gated update submission and explicit reconciliation."""
+from .audit import audit
 from .domain import RecordSet
 from .intents import PermissionDenied, UpdateConflict, UpdateState
 from .ports import Authorizer, DNSBackend
@@ -25,11 +26,14 @@ class UpdateOrchestrator:
         intent = self._journal.get(identifier)
         token = self._journal.claim_with_lease(identifier, lease_seconds=self._lease_seconds)
         if token is None:
+            audit("publication_claim_denied", intent=identifier)
             raise UpdateConflict("intent is not pending")
+        audit("publication_started", intent=identifier)
         try:
             if not self._authorizer.may_update(intent.principal_id, intent.rrset):
                 self._journal.finish_owned(identifier, token, succeeded=False,
                                            error="PermissionRevoked")
+                audit("publication_denied", intent=identifier, reason="permission_revoked")
                 raise PermissionDenied("permission revoked before publication")
             self._backend.publish(intent.rrset)
         except PermissionDenied:
@@ -37,9 +41,11 @@ class UpdateOrchestrator:
         except Exception as exc:
             # An exception may represent an ambiguous remote result.
             self._journal.finish_owned(identifier, token, succeeded=False, error=type(exc).__name__)
+            audit("publication_failed", intent=identifier, error=type(exc).__name__)
             raise
         else:
             self._journal.finish_owned(identifier, token, succeeded=True)
+            audit("publication_applied", intent=identifier)
         return self._journal.get(identifier)
 
     def reconcile(self, identifier: str, *, retry: bool = False):
@@ -52,13 +58,17 @@ class UpdateOrchestrator:
         intent = self._journal.get(identifier)
         if intent.state not in (UpdateState.APPLYING, UpdateState.FAILED):
             raise UpdateConflict("only unresolved update attempts can be reconciled")
+        audit("reconciliation_started", intent=identifier)
         observed = self._backend.observe(intent.rrset)  # type: ignore[attr-defined]
         if observed == intent.rrset:
             self._journal.mark_verified(identifier)
+            audit("reconciliation_verified", intent=identifier)
             return self._journal.get(identifier)
         if retry:
             if not self._authorizer.may_update(intent.principal_id, intent.rrset):
                 raise PermissionDenied("permission revoked before retry")
+            audit("reconciliation_retry_requested", intent=identifier)
             self._journal.requeue(identifier)
             return self.apply(identifier)
+        audit("reconciliation_unresolved", intent=identifier)
         return intent
