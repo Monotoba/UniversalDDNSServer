@@ -2,6 +2,7 @@
 
 Reads the local lab key without printing it. Never modifies a production zone.
 """
+import re
 import subprocess
 from pathlib import Path
 import dns.name
@@ -19,7 +20,6 @@ assert subprocess.run(["systemd-detect-virt", "--vm"], capture_output=True).retu
 assert subprocess.check_output(["hostname", "-s"], text=True).strip() == "uddns-prealpha"
 
 key_config = Path("/etc/bind/uddns-lab.key").read_text()
-import re
 match = re.search(r'secret\s+"([^"]+)"', key_config)
 assert match, "TSIG secret missing"
 keyring = dns.tsigkeyring.from_text({"uddns-lab.": match.group(1)})
