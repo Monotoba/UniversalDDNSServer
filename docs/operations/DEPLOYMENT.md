@@ -43,6 +43,18 @@ Before starting services, verify that the service account can read the credentia
 
 Run `deploy/smoke-check.sh` from the checkout after the API service starts. It checks loopback liveness and confirms that an unauthenticated intent query returns HTTP 401. This smoke check **does not modify DNS** and is not a substitute for a host systemd installation test. Verify systemd unit syntax with `systemd-analyze verify` and inspect `systemctl status universalddns-api universalddns-worker` on the target machine. To verify actual publication, use a disposable test zone and confirm the intended A/AAAA RRset directly at its authoritative nameserver. Do not run this against live production zones.
 
+## Installed-host validation
+
+After installing the systemd units, provisioning a token (which initializes the SQLite database), and starting both services, execute the included host checks:
+
+```sh
+sudo sh /opt/universalddns/src/deploy/validate-install.sh
+```
+
+The script verifies installed executables, parses both systemd units, confirms that the API and worker units are active, validates the service account's access to the configuration, TSIG credential and existing SQLite database, and checks localhost API liveness and authentication rejection. It does not install packages, modify DNS records or test a reboot. It requires `sudo`, `systemctl`, and `systemd-analyze` on an actual systemd host.
+
+Record the Ubuntu release, Python version, command exit status, journal excerpts without secrets, and any service-restart or backup/restore test results before approving a release. CI validates script syntax and systemd unit parsing; it does **not** count as evidence of a clean systemd installation.
+
 ## Limitations
 
 No production TLS reverse-proxy guide or security approval exists, and systemd deployment itself has not been exercised on a real installed host. The process-local rate limiter does not provide distributed throttling; worker backoff, audit retention, mature credentials handling, and a safe policy for competing authoritative writers are incomplete. Test SQLite backups and restore separately. The DNS operation may succeed even if the worker fails to record completion, requiring authoritative reconciliation. Do not use a residential IP as the sole public authoritative DNS infrastructure. DDNS records do not resolve CGNAT or firewall ingress constraints.
