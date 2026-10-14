@@ -64,3 +64,17 @@ ssh ubuntu@VM_IP 'cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-tes
 The migration refuses unexpected hostnames/configurations, keeps a local backup at `/etc/bind/named.conf.local.prealpha-backup`, validates BIND configuration before reload, and can be safely rerun when the restricted rule is already present. Review that backup as sensitive operational configuration. The `update` test verifies **allowed** publication only; denying another name under the same TSIG key must be separately verified before completing the security checklist.
 
 The `tsig-deny` mode reads the installed lab TSIG key as root, sends a signed update for `disallowed-tsig-probe.lab.invalid.` to the loopback BIND server, asserts an RFC 2136 `REFUSED` response, and verifies the prohibited record remains absent. It first checks the expected VM name and installed lab-zone policy. It never prints the secret.
+
+## One-command update of an existing VM
+
+Use `update-vm.sh` on the **already installed disposable VM**. The updater refuses unexpected hostnames, non-VM systems, dirty checkouts and non-fast-forward source changes. It requires passwordless sudo. It creates a protected, integrity-checked SQLite snapshot after stopping the API and worker; fast-forwards Git; reinstalls the Python distribution without upgrading unrelated dependencies; refreshes systemd units and the test runner; starts both app services; and executes installed-host acceptance checks.
+
+**First run:** copy the updater to the VM outside the source tree, since the updater changes that tree while running. On the Ubuntu host:
+
+```sh
+ssh ubuntu@VM_IP 'curl -fsSL https://raw.githubusercontent.com/Monotoba/UniversalDDNSServer/main/tests/deployment/update-vm.sh -o ~/update-vm.sh && bash ~/update-vm.sh'
+```
+
+For later runs, `ssh ubuntu@VM_IP 'bash ~/update-vm.sh'` updates to the latest main branch, though fetching the latest updater script first is recommended if it was changed in the meantime.
+
+On a command failure the script attempts to stop both services, restore the prior source commit and Python package, replace SQLite from its snapshot, and restart services. **This is best-effort rollback, not transactional rollback or a substitute for a VM snapshot.** A hard power failure or a change to database schema may require manual recovery. Snapshots persist under `/var/lib/universalddns/upgrade-backup-TIMESTAMP/`; delete old snapshots deliberately, never indiscriminately. The script does not upgrade the OS, BIND 9, or Python dependencies.
