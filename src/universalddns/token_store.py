@@ -36,6 +36,18 @@ class TokenStore:
         return tuple(APIPrincipal(p, d, frozenset(json.loads(s)), frozenset(json.loads(r)))
                      for p, d, s, r in rows)
 
+    def list_metadata(self) -> tuple[dict[str, object], ...]:
+        """Local credential inventory; never expose digests or bearer tokens."""
+        rows = self.db.execute(
+            "SELECT principal,scopes,records,revoked FROM api_tokens ORDER BY principal, rowid"
+        ).fetchall()
+        return tuple({
+            "principal": principal,
+            "scopes": sorted(json.loads(scopes)),
+            "records": sorted(json.loads(records)),
+            "revoked": bool(revoked),
+        } for principal, scopes, records, revoked in rows)
+
     def close(self):
         self.db.close()
 
