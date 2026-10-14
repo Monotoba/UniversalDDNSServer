@@ -9,7 +9,7 @@
 
 **Experimental pre-alpha:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
 
-The [v0.1.0a1 prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) is published; [v0.2.0a1 release notes](docs/releases/v0.2.0a1.md) are in preparation (not yet tagged or published).
+The [v0.2.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1) is published; see its [release notes](docs/releases/v0.2.0a1.md). The earlier [v0.1.0a1 prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) remains available.
 
 ## Implemented
 - Python 3.11+ immutable validated A/AAAA resource-record-set model with order-insensitive RRset comparison.
