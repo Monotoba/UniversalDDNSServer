@@ -184,6 +184,64 @@ class Bind9IntegrationTests(unittest.TestCase):
                     headers=headers).status_code, 401)
 
 
+
+    def test_dyndns2_confirmed_and_unchanged_against_real_bind(self):
+        """DynDNS2 request -> independent worker -> real authoritative BIND."""
+        import threading
+
+        class Allow:
+            def may_update(self, principal_id, rrset):
+                return principal_id == "dynclient"
+
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "state.db"
+            name = "dyndns-confirm.example.test"
+            template = RecordSet("example.test", name, "A", 120, ("192.0.2.100",))
+            expected = RecordSet("example.test", name, "A", 120, ("192.0.2.101",))
+            with TokenStore(db) as store:
+                token = store.issue("dynclient", frozenset({"records:write"}),
+                                    frozenset({"dyndns"}))
+
+            def journal_factory():
+                return SQLiteIntentJournal(db)
+
+            def orchestrator_factory(journal):
+                return UpdateOrchestrator(Allow(), journal, self.backend())
+
+            def principal_provider():
+                with TokenStore(db) as store:
+                    return store.principals()
+
+            app = create_app(journal_factory, orchestrator_factory,
+                             {"dyndns": template},
+                             principal_provider,
+                             dyndns_wait_seconds=3)
+
+            def process_work():
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    with journal_factory() as journal:
+                        if journal.pending():
+                            PublicationWorker(journal, orchestrator_factory(journal)).run_once()
+                            return
+                    time.sleep(0.03)
+
+            thread = threading.Thread(target=process_work)
+            thread.start()
+            try:
+                auth = base64.b64encode(("user:" + token).encode()).decode()
+                with TestClient(app) as client:
+                    params = {"hostname": name, "myip": "192.0.2.101"}
+                    response = client.get("/nic/update", params=params,
+                                          headers={"Authorization": "Basic " + auth})
+                    self.assertEqual("good 192.0.2.101\n", response.text)
+                    self.assertEqual(self.backend().observe(expected), expected)
+                    again = client.get("/nic/update", params=params,
+                                       headers={"Authorization": "Basic " + auth})
+                    self.assertEqual("nochg 192.0.2.101\n", again.text)
+            finally:
+                thread.join(timeout=4)
+
     def test_uddnsupdater_client_to_real_bind_pipeline(self):
         """Cross-repository protocol test with HTTP transport bridged to ASGI.
 
