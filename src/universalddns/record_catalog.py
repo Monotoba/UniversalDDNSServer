@@ -47,6 +47,12 @@ class RecordCatalog:
                 raise ValueError("missing record or stale revision")
         return expected_revision + 1
 
+    def active_count(self) -> int:
+        """Count staged active records before building a bounded mapping."""
+        return self._db.execute(
+            "SELECT COUNT(*) FROM managed_records WHERE active=1"
+        ).fetchone()[0]
+
     def active_records(self, *, limit: int = 100) -> tuple[tuple[str, RecordSet, int], ...]:
         """Return staged active entries. Live runtime is not yet catalog-backed."""
         if type(limit) is not int or not 1 <= limit <= 1000:
