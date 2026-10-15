@@ -28,6 +28,12 @@ class RecoveryDecisionJournal:
             )""")
             self._db.execute("""CREATE INDEX IF NOT EXISTS recovery_decisions_intent
                 ON recovery_decisions(intent_id, created_at)""")
+            self._db.execute("""CREATE TRIGGER IF NOT EXISTS recovery_decisions_no_update
+                BEFORE UPDATE ON recovery_decisions BEGIN
+                SELECT RAISE(ABORT, 'recovery decisions are append-only'); END""")
+            self._db.execute("""CREATE TRIGGER IF NOT EXISTS recovery_decisions_no_delete
+                BEFORE DELETE ON recovery_decisions BEGIN
+                SELECT RAISE(ABORT, 'recovery decisions are append-only'); END""")
 
     def record(self, *, intent_id: str, expected_generation: int,
                operator_id: str, proposed_action: str,
@@ -42,9 +48,10 @@ class RecoveryDecisionJournal:
             raise ValueError("rationale required (up to 1000 characters)")
         if not isinstance(intent_id, str) or not intent_id:
             raise ValueError("intent ID required")
-        # Snapshot checks are informational only, not approval or state CAS.
-        # Callers must not interpret this append-only record as a permission grant.
-        with self._db:
+        # BEGIN IMMEDIATE serializes snapshot checking and insertion with any
+        # concurrent SQLite writer; this is still not a DNS-side fence.
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
             row = self._db.execute(
                 "SELECT generation FROM update_intents WHERE identifier=?",
                 (intent_id,)).fetchone()
@@ -60,6 +67,10 @@ class RecoveryDecisionJournal:
                 VALUES (?,?,?,?,?,?,?)""",
                 (decision_id, intent_id, expected_generation, operator_id,
                  proposed_action, observation, rationale))
+            self._db.commit()
+        except BaseException:
+            self._db.rollback()
+            raise
         return decision_id
 
     def list_for_intent(self, intent_id: str, *, limit: int = 100) -> tuple[dict, ...]:
