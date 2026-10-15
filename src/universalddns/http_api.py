@@ -134,7 +134,11 @@ def create_app(
             raise HTTPException(422, "invalid request id")
         # Take the same validated active-catalog view used by discovery.
         # Existing callers without a reader retain static-config behavior.
-        current_records = record_reader() if record_reader is not None else records
+        try:
+            current_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="update")
+            raise HTTPException(503, "catalog view unavailable") from exc
         if record_id not in current_records:
             raise HTTPException(404, "record not found")
         template = current_records[record_id]
@@ -252,7 +256,11 @@ def create_app(
                 intent = journal.get(intent_id)
             except UnknownIntent as exc:
                 raise HTTPException(404, "intent not found") from exc
-        current_records = record_reader() if record_reader is not None else records
+        try:
+            current_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="intent_status")
+            raise HTTPException(503, "catalog view unavailable") from exc
         if intent.principal_id != principal.identifier or not any(
             rid in principal.record_ids and current_records[rid].key == intent.rrset.key
             for rid in current_records
