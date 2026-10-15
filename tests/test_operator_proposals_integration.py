@@ -34,7 +34,11 @@ class LocalProposalIntegrationTests(unittest.TestCase):
                   patch("universalddns.local_operator.os.getuid", return_value=1001),
                   patch("universalddns.local_operator.os.geteuid", return_value=1001),
                   patch("universalddns.local_operator.pwd.getpwuid",
-                        return_value=SimpleNamespace(pw_name="operator1")),
+                        return_value=SimpleNamespace(pw_name="operator1", pw_gid=100)),
+                  patch("universalddns.local_operator.grp.getgrnam",
+                        return_value=SimpleNamespace(gr_gid=201)),
+                  patch("universalddns.local_operator.os.getgrouplist",
+                        return_value=[100, 201]),
                   redirect_stdout(StringIO()) as output):
                 self.assertEqual(main(), 0)
                 self.assertFalse(json.loads(output.getvalue())["executed"])
