@@ -111,7 +111,7 @@ class RecoveryTests(unittest.TestCase):
         report = self.svc.assess_recovery(intent.identifier)
         self.assertTrue(report["authoritative_match"])
         self.assertFalse(report["retry_safe"])
-        self.assertEqual(report["next_action"], "reconcile_to_verify")
+        self.assertEqual(report["next_action"], "reconcile_when_eligible")
         self.assertEqual(self.journal.get(intent.identifier).state, UpdateState.APPLYING)
         with self.assertRaises(UpdateConflict):
             self.svc.reconcile(intent.identifier, retry=True)
