@@ -115,7 +115,11 @@ def create_app(
                      authorization: str | None = Header(default=None)):
         """Discover only records allowed by the caller's scoped credential."""
         principal = authenticated(request, authorization, "intents:read")
-        visible_records = record_reader() if record_reader is not None else records
+        try:
+            visible_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="list")
+            raise HTTPException(503, "catalog view unavailable") from exc
         return {"records": [
             {"id": record_id, "name": record.name,
              "type": record.record_type, "ttl": record.ttl}
@@ -127,12 +131,21 @@ def create_app(
     def update(record_id: str, body: RecordAddress, request: Request,
                authorization: str | None = Header(default=None)):
         principal = authenticated(request, authorization, "records:write")
-        if record_id not in records or record_id not in principal.record_ids:
+        if record_id not in principal.record_ids:
             audit("record_denied", principal=principal.identifier)
             raise HTTPException(404, "record not found")
         if not _KEY.fullmatch(body.request_id):
             raise HTTPException(422, "invalid request id")
-        template = records[record_id]
+        # Take the same validated active-catalog view used by discovery.
+        # Existing callers without a reader retain static-config behavior.
+        try:
+            current_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="update")
+            raise HTTPException(503, "catalog view unavailable") from exc
+        if record_id not in current_records:
+            raise HTTPException(404, "record not found")
+        template = current_records[record_id]
         try:
             rrset = RecordSet(template.zone, template.name, template.record_type,
                               template.ttl, (body.address,))
@@ -247,9 +260,14 @@ def create_app(
                 intent = journal.get(intent_id)
             except UnknownIntent as exc:
                 raise HTTPException(404, "intent not found") from exc
+        try:
+            current_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="intent_status")
+            raise HTTPException(503, "catalog view unavailable") from exc
         if intent.principal_id != principal.identifier or not any(
-            rid in principal.record_ids and records[rid].key == intent.rrset.key
-            for rid in records
+            rid in principal.record_ids and current_records[rid].key == intent.rrset.key
+            for rid in current_records
         ):
             raise HTTPException(404, "intent not found")
         return {"intent_id": intent.identifier, "status": intent.state.value}

@@ -113,6 +113,9 @@ def factories(settings: Settings):
 
 def api_app():
     settings = load_settings(os.environ["UNIVERSALDDNS_CONFIG"])
+    # Upgrade older static-only databases before serving catalog-backed requests.
+    with RecordCatalog(settings.database):
+        pass
     journal, orchestrator, principals = factories(settings)
     def readable_records():
         mapping, _ = catalog_snapshot(settings.database, settings.records)
