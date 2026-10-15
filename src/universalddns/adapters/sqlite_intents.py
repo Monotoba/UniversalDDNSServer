@@ -122,6 +122,30 @@ class SQLiteIntentJournal:
             if row[0] != expected_generation:
                 raise UpdateConflict("stale intent generation")
 
+    def advance_generation_if(self, identifier: str, expected_generation: int) -> int:
+        """Atomic metadata-only CAS; never changes state or publishes DNS.
+
+        A successful compare-and-swap invalidates other snapshots. It is NOT
+        authority to release blocked records or retry an in-flight update.
+        """
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise ValueError("invalid expected generation")
+        with self._db:
+            cur = self._db.execute(
+                "UPDATE update_intents SET generation=generation+1 "
+                "WHERE identifier=? AND generation=?",
+                (identifier, expected_generation),
+            )
+            if cur.rowcount == 1:
+                return expected_generation + 1
+            exists = self._db.execute(
+                "SELECT 1 FROM update_intents WHERE identifier=?",
+                (identifier,),
+            ).fetchone()
+            if exists is None:
+                raise UnknownIntent(identifier)
+            raise UpdateConflict("stale intent generation")
+
     def claim_with_lease(self, identifier: str, *, lease_seconds: int = 30) -> str | None:
         """Claim pending work atomically with a persisted deadline."""
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
