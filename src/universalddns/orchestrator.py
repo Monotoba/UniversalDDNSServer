@@ -54,6 +54,36 @@ class UpdateOrchestrator:
             audit("publication_applied", intent=identifier)
         return self._journal.get(identifier)
 
+    def assess_recovery(self, identifier: str) -> dict[str, object]:
+        """Read-only recovery assessment; never retries or updates intent state.
+
+        Observation may race an outstanding DNS write, so a mismatch is not
+        evidence that replay is safe.
+        """
+        intent = self._journal.get(identifier)
+        if intent.state not in (UpdateState.APPLYING, UpdateState.FAILED):
+            raise UpdateConflict("only unresolved attempts can be assessed")
+        audit("operator_recovery_assessment_started", intent=identifier)
+        try:
+            observed = self._backend.observe(intent.rrset)
+        except Exception as exc:
+            audit("operator_recovery_assessment_error", intent=identifier,
+                  error=type(exc).__name__)
+            raise
+        matches = observed == intent.rrset
+        audit("operator_recovery_assessment_completed", intent=identifier,
+              state=intent.state.value, matches=str(matches).lower())
+        return {
+            "intent_id": identifier,
+            "state": intent.state.value,
+            "authoritative_match": matches,
+            "observation": ("matches" if matches else
+                            "absent" if observed is None else "differs"),
+            "next_action": ("reconcile_to_verify" if matches else
+                            "isolate_workers_and_investigate"),
+            "retry_safe": False,
+        }
+
     def reconcile(self, identifier: str, *, retry: bool = False):
         """Read authoritative RRset before resolving/retrying an uncertain attempt.
 
