@@ -1,5 +1,6 @@
 """Durable, non-authorizing operator decision records."""
 import tempfile
+import sqlite3
 import unittest
 from pathlib import Path
 
@@ -33,6 +34,45 @@ class RecoveryDecisionTests(unittest.TestCase):
                             observation="absent", rationale="Old snapshot")
             with RecoveryDecisionJournal(path) as reopened:
                 self.assertEqual(len(reopened.list_for_intent(intent.identifier)), 1)
+
+    def test_database_enforces_append_only_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.db"
+            with SQLiteIntentJournal(path) as journal:
+                intent = journal.enqueue("client", RecordSet(
+                    "example.org", "audit.example.org", "A", 60, ("192.0.2.24",)))
+            with RecoveryDecisionJournal(path) as records:
+                decision_id = records.record(
+                    intent_id=intent.identifier, expected_generation=0,
+                    operator_id="maintainer", proposed_action="investigate",
+                    observation="unknown", rationale="Audit retention test")
+            with sqlite3.connect(path) as db:
+                with self.assertRaises(sqlite3.IntegrityError):
+                    db.execute("UPDATE recovery_decisions SET rationale=? WHERE decision_id=?",
+                               ("tampered", decision_id))
+                with self.assertRaises(sqlite3.IntegrityError):
+                    db.execute("DELETE FROM recovery_decisions WHERE decision_id=?",
+                               (decision_id,))
+            with RecoveryDecisionJournal(path) as records:
+                self.assertEqual(records.list_for_intent(intent.identifier)[0]["rationale"],
+                                 "Audit retention test")
+
+    def test_stale_proposal_rolls_back_and_allows_fresh_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.db"
+            with SQLiteIntentJournal(path) as journal:
+                intent = journal.enqueue("client", RecordSet(
+                    "example.org", "rollback.example.org", "A", 60, ("192.0.2.25",)))
+                journal.claim_with_lease(intent.identifier)
+            with RecoveryDecisionJournal(path) as records:
+                with self.assertRaises(UpdateConflict):
+                    records.record(intent_id=intent.identifier, expected_generation=0,
+                                   operator_id="maintainer", proposed_action="investigate",
+                                   observation="unknown", rationale="stale")
+                records.record(intent_id=intent.identifier, expected_generation=1,
+                               operator_id="maintainer", proposed_action="investigate",
+                               observation="unknown", rationale="fresh")
+                self.assertEqual(len(records.list_for_intent(intent.identifier)), 1)
 
     def test_validation_and_missing_intent(self):
         with tempfile.TemporaryDirectory() as tmp:
