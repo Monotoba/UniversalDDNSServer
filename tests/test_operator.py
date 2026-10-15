@@ -52,6 +52,30 @@ class OperatorInspectionTests(unittest.TestCase):
             self.assertEqual(4, main())
 
 
+    def test_cli_assessment_is_read_only(self):
+        class Journal:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class Service:
+            def assess_recovery(self, identifier):
+                self.identifier = identifier
+                return {"intent_id": identifier, "state": "applying",
+                        "authoritative_match": False, "retry_safe": False,
+                        "next_action": "isolate_workers_and_investigate"}
+
+        service = Service()
+        argv = ["operator", "--config", "test-config", "assess", "intent-id"]
+        with (patch("sys.argv", argv),
+              patch("universalddns.operator.load_settings"),
+              patch("universalddns.operator.factories",
+                    return_value=(Journal, lambda _: service, None))):
+            self.assertEqual(main(), 0)
+        self.assertEqual(service.identifier, "intent-id")
+
     def test_reconcile_statuses_do_not_retry(self):
         from dns.exception import DNSException
         from universalddns.intents import UpdateState

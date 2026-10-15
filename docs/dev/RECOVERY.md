@@ -22,3 +22,13 @@ Regression tests simulate process termination using `SystemExit` immediately aft
 An expired lease is not permission to repeat a DNS write. First pause automatic publication activity for the affected record and preserve the SQLite database and audit logs. Inspect the intent using the existing operator CLI, inspect the configured authoritative nameserver directly, and attempt read-only reconciliation. A complete match may be marked applied; a mismatch, timeout, or inconsistent authoritative replicas must remain unresolved. Avoid deleting or manually editing journal rows, bypassing ownership checks, or replaying the request solely because the lease expired. An `applying` intent deliberately blocks a subsequent update of the same RRset. If it remains unresolved, isolate any previous workers, establish that outstanding DNS operations can no longer execute, and use a controlled recovery procedure only after reviewing the DNS state and the remaining concurrency risks. The current implementation does not provide a supported automated transition from ambiguous `applying` to safely retryable state; do not represent one as available.
 
 **Remaining safety work:** partial-transport fault injection, stronger multi-writer coordination and DNS compare-and-swap prerequisites, retention/idempotency expiration, broader credential-lifecycle hardening, production HTTPS ingress and rate limiting, revision semantics for concurrent operator edits, complete migration testing, and external DNS integration verification. The project is not production-ready.
+
+## Audited read-only operator assessment (v0.4 development)
+
+The local operator CLI offers an assessment command; it does not alter the intent journal or issue a DNS UPDATE:
+
+```sh
+python -m universalddns.operator --config /etc/universalddns/config.json assess INTENT_ID
+```
+
+It returns the journal state, whether the configured authoritative RRset matches, an investigation/verification next-action hint, and `retry_safe: false`. Audit events record the intent identifier, starting/completed/error outcome, and comparison boolean without credentials or full DNS answers. For a match, run the separate `reconcile INTENT_ID` operation only when the intent is eligible (an `applying` lease must have expired) to persist verified completion. A matching assessment itself never bypasses an active lease. An absent or differing record is **not** proof that the previous update can no longer finish: stop and isolate relevant workers, preserve the journal, and investigate manually. An unavailable authoritative server produces an error rather than a negative observation. This feature deliberately does not provide a manual force-retry, unblock, or erase operation.

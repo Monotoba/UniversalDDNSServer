@@ -38,6 +38,8 @@ def main():
         "reconcile", help="Observe authoritative DNS and resolve only if already applied"
     )
     reconciling.add_argument("identifier")
+    assessing = sub.add_parser("assess", help="Read-only, audited recovery assessment")
+    assessing.add_argument("identifier")
     args = parser.parse_args()
     settings = load_settings(args.config)
     journal_factory, orchestrator_factory, _ = factories(settings)
@@ -49,6 +51,8 @@ def main():
                           journal.list_by_state(states, limit=args.limit)]
             elif args.operation == "show":
                 result = describe(journal.get(args.identifier))
+            elif args.operation == "assess":
+                result = orchestrator_factory(journal).assess_recovery(args.identifier)
             else:
                 # Observation only: no automatic or implicit DNS retry.
                 intent = orchestrator_factory(journal).reconcile(args.identifier, retry=False)
