@@ -46,7 +46,7 @@ class RecordCatalog:
                     "WHERE record_id=? AND revision=?",
                     (record_id, expected_revision),
                 ).fetchone()
-                if existing is not None and not existing[0]:
+                if existing is not None and not existing[0] and expected_revision > 1:
                     token_table = self._db.execute(
                         "SELECT 1 FROM sqlite_master "
                         "WHERE type='table' AND name='api_tokens'"
