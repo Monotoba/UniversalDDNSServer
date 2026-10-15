@@ -99,6 +99,33 @@ class LeaseTests(unittest.TestCase):
                 with self.assertRaises(UnknownIntent):
                     journal.require_generation("missing", 0)
 
+    def test_atomic_generation_cas_across_connections(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "cas.db"
+            with SQLiteIntentJournal(path) as first, SQLiteIntentJournal(path) as second:
+                rrset = RecordSet("example.org", "cas.example.org", "A",
+                                  60, ("192.0.2.121",))
+                intent = first.enqueue("client", rrset)
+                generation = first.generation(intent.identifier)
+                self.assertEqual(first.advance_generation_if(intent.identifier, generation), 1)
+                with self.assertRaises(UpdateConflict):
+                    second.advance_generation_if(intent.identifier, generation)
+                self.assertEqual(second.advance_generation_if(intent.identifier, 1), 2)
+                self.assertEqual(first.get(intent.identifier).state, UpdateState.PENDING)
+                self.assertEqual(first.generation(intent.identifier), 2)
+            with SQLiteIntentJournal(path) as reopened:
+                self.assertEqual(reopened.generation(intent.identifier), 2)
+
+    def test_atomic_generation_cas_validates_input_and_absence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with SQLiteIntentJournal(Path(temp) / "cas.db") as journal:
+                for invalid in (-1, True, 2.5, "0"):
+                    with self.subTest(invalid=invalid):
+                        with self.assertRaises(ValueError):
+                            journal.advance_generation_if("missing", invalid)
+                with self.assertRaises(UnknownIntent):
+                    journal.advance_generation_if("missing", 0)
+
     def test_legacy_unfenced_transitions_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             with SQLiteIntentJournal(Path(temp) / "x.db") as db:
