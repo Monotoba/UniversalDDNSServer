@@ -6,6 +6,7 @@ from pathlib import Path
 
 from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
 from universalddns.domain import RecordSet
+from universalddns.intents import UpdateConflict
 from universalddns.orchestrator import UpdateOrchestrator
 from universalddns.ports import BackendCapabilities
 from universalddns.recovery_worker import RecoveryWorker
@@ -142,6 +143,29 @@ class RecoveryWorkerTests(unittest.TestCase):
                 self.assertEqual((report.inspected, report.unresolved, report.errors), (1, 1, 0))
                 self.assertEqual(journal.get(intent.identifier).state.value, "applying")
                 self.assertEqual(backend.writes, 1)
+
+    def test_expired_applying_retry_is_rejected_even_when_dns_mismatches(self):
+        """Lease expiry never proves the old DNS request stopped executing."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "journal.db"
+            backend = Backend()
+            with SQLiteIntentJournal(path) as journal:
+                service = UpdateOrchestrator(Allow(), journal, backend)
+                rrset = RecordSet("example.org", "racing.example.org", "A", 60,
+                                  ("192.0.2.92",))
+                intent = service.submit("device", rrset)
+                journal.claim_with_lease(intent.identifier)
+                with sqlite3.connect(path) as db:
+                    db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?",
+                               (intent.identifier,))
+                with self.assertRaisesRegex(UpdateConflict, "in-flight publication"):
+                    service.reconcile(intent.identifier, retry=True)
+                self.assertEqual(journal.get(intent.identifier).state.value, "applying")
+                self.assertEqual(backend.writes, 0)
+                backend.observed = rrset
+                self.assertEqual(service.reconcile(intent.identifier, retry=True).state.value,
+                                 "applied")
+                self.assertEqual(backend.writes, 0)
 
     def test_batch_validation(self):
         with tempfile.TemporaryDirectory() as directory:
