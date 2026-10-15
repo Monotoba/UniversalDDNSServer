@@ -24,16 +24,12 @@ jobs:
             'e13d2d5eaf763335bd1f833538e538fb62926490f6507910a806aa6c2a6c747f  universalddnsserver-0.3.0a1-py3-none-any.whl' \
             '67bfcacffefa0687f9db3fd25dae90e86a5515b4875a5b589b3eab316947628b  universalddnsserver-0.3.0a1.tar.gz' > SHA256SUMS
           sha256sum -c SHA256SUMS
-      - name: Publish owner-approved prerelease from tested commit
+      - name: Synchronize published release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.3.0a1 \
+          gh release edit v0.3.0a1 \
             --repo Monotoba/UniversalDDNSServer \
-            --target de496a7190be72a326d30f330ab0a4cc1156cb92 \
             --title "UniversalDDNSServer v0.3.0a1 (Alpha)" \
             --prerelease \
-            --notes-file docs/releases/v0.3.0a1.md \
-            release-assets/universalddnsserver-0.3.0a1-py3-none-any.whl \
-            release-assets/universalddnsserver-0.3.0a1.tar.gz \
-            release-assets/SHA256SUMS
+            --notes-file docs/releases/v0.3.0a1.md
