@@ -76,6 +76,39 @@ class OperatorInspectionTests(unittest.TestCase):
             self.assertEqual(main(), 0)
         self.assertEqual(service.identifier, "intent-id")
 
+    def test_proposal_cli_uses_os_identity_not_caller_override(self):
+        from unittest.mock import MagicMock
+        rrset = RecordSet("lab.invalid", "home.lab.invalid", "A", 60,
+                          ("192.0.2.19",))
+        from universalddns.intents import UpdateIntent, UpdateState
+
+        class Journal:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def get(self, identifier):
+                return UpdateIntent(identifier, "client", rrset, UpdateState.APPLYING)
+
+        decision_store = MagicMock()
+        decision_store.__enter__.return_value = decision_store
+        decision_store.record.return_value = "proposal-id"
+        settings = MagicMock(database="test.db")
+        argv = ["operator", "--config", "test-config", "propose", "intent-id",
+                "--generation", "3", "--action", "investigate",
+                "--observation", "unknown", "--rationale", "review worker"]
+        with (patch("sys.argv", argv),
+              patch("universalddns.operator.load_settings", return_value=settings),
+              patch("universalddns.operator.factories",
+                    return_value=(Journal, None, None)),
+              patch("universalddns.operator.local_operator_identity",
+                    return_value="os-user"),
+              patch("universalddns.operator.RecoveryDecisionJournal",
+                    return_value=decision_store)):
+            self.assertEqual(main(), 0)
+        self.assertEqual(decision_store.record.call_args.kwargs["operator_id"], "os-user")
+        self.assertEqual(decision_store.record.call_args.kwargs["expected_generation"], 3)
+
     def test_reconcile_statuses_do_not_retry(self):
         from dns.exception import DNSException
         from universalddns.intents import UpdateState
