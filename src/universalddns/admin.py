@@ -3,6 +3,8 @@ import argparse
 import json
 from .runtime import load_settings
 from .token_store import TokenStore
+from .record_catalog import RecordCatalog
+from .record_snapshot import catalog_snapshot
 
 
 def main():
@@ -20,8 +22,17 @@ def main():
     args = parser.parse_args()
     settings = load_settings(args.config)
     if args.operation == "issue":
-        if not set(args.record).issubset(settings.records):
-            parser.error("unknown record identifier")
+        # Initialize missing legacy catalog/token tables without activation.
+        with RecordCatalog(settings.database):
+            pass
+        with TokenStore(settings.database):
+            pass
+        try:
+            available, _ = catalog_snapshot(settings.database, settings.records)
+        except ValueError as exc:
+            parser.error(f"catalog validation failed: {exc}")
+        if not set(args.record).issubset(available):
+            parser.error("unknown or inactive record identifier")
         with TokenStore(settings.database) as store:
             token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record))
         print(token)
