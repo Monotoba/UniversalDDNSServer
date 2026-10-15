@@ -48,3 +48,7 @@ An expired SQLite lease fences journal completion, but cannot prevent a DNS UPDA
 ## Current implementation
 
 The v0.4 `assess` command and `reconcile` operate conservatively. `assess` is read-only and emits audit events; `reconcile` only verifies matching DNS state while respecting lease conditions. This document specifies future behavior only and does not change these guarantees.
+
+## v0.4 incremental implementation: journal generation
+
+Each intent now stores a nonnegative SQLite `generation`, initialized to zero in new and migrated journals. Successful claim, lease renewal, completion, verification, or explicit requeue increments it atomically in the existing transaction. `SQLiteIntentJournal.generation(identifier)` exposes this metadata to internal callers. The addition does **not** authorize recovery transitions, ensure that the DNS server fences outstanding writes, or add any operator approval endpoint. Future compare-and-swap transitions must require an expected generation in their `WHERE` condition, enforce worker quiescence independently, and include a durable audit decision. There is currently no force-unblock command.
