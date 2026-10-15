@@ -14,6 +14,10 @@ def main():
     parser.add_argument("--config", required=True)
     sub = parser.add_subparsers(dest="operation", required=True)
     sub.add_parser("list")
+    stage = sub.add_parser("stage", help="Set catalog activation flag; does not publish DNS")
+    stage.add_argument("record_id")
+    stage.add_argument("--revision", required=True, type=int)
+    stage.add_argument("--active", choices=("yes", "no"), required=True)
     for name in ("create", "update"):
         cmd = sub.add_parser(name)
         cmd.add_argument("record_id")
@@ -34,6 +38,20 @@ def main():
                      "ttl": rr.ttl, "addresses": list(rr.values), "revision": revision}
                     for identifier, rr, revision in catalog.list_records()
                 ]}
+            elif args.operation == "stage":
+                if args.record_id in settings.records:
+                    raise ValueError("record ID reserved by static configuration")
+                existing = catalog.get(args.record_id)
+                if existing is None:
+                    raise ValueError("record not found")
+                if any(rr.key == existing[0].key for rr in settings.records.values()):
+                    raise ValueError("RRset reserved by static configuration")
+                revision = catalog.set_active(args.record_id,
+                                              expected_revision=args.revision,
+                                              active=args.active == "yes")
+                result = {"id": args.record_id, "revision": revision,
+                          "staged_active": args.active == "yes",
+                          "runtime_active": False, "recorded_by": operator}
             else:
                 if args.record_id in settings.records:
                     raise ValueError("record ID is reserved by static configuration")
