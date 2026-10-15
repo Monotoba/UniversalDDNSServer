@@ -97,7 +97,8 @@ class RecoveryTests(unittest.TestCase):
         self.policy.allowed = False
         with self.assertRaises(PermissionDenied):
             self.svc.reconcile(attempt.identifier, retry=True)
-        self.assertEqual(self.backend.calls, 0)
+        self.assertEqual(self.backend.calls, 1)  # original failed attempt; no retry
+
 
     def test_invalid_key(self):
         with self.assertRaises(ValueError):
