@@ -100,6 +100,34 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.backend.calls, 1)  # original failed attempt; no retry
 
 
+    def test_read_only_assessment_preserves_ambiguous_intent(self):
+        intent = self.svc.submit("client", self.rr)
+        self.journal.claim_with_lease(intent.identifier)
+        self.assertEqual(self.svc.assess_recovery(intent.identifier)["next_action"],
+                         "isolate_workers_and_investigate")
+        self.assertEqual(self.journal.get(intent.identifier).state, UpdateState.APPLYING)
+        self.assertEqual(self.backend.calls, 0)
+        self.backend.current = self.rr
+        report = self.svc.assess_recovery(intent.identifier)
+        self.assertTrue(report["authoritative_match"])
+        self.assertFalse(report["retry_safe"])
+        self.assertEqual(report["next_action"], "reconcile_to_verify")
+        self.assertEqual(self.journal.get(intent.identifier).state, UpdateState.APPLYING)
+        with self.assertRaises(UpdateConflict):
+            self.svc.reconcile(intent.identifier, retry=True)
+
+    def test_assessment_rejects_pending_and_handles_observation_failure(self):
+        intent = self.svc.submit("client", self.rr)
+        with self.assertRaises(UpdateConflict):
+            self.svc.assess_recovery(intent.identifier)
+        self.journal.claim_with_lease(intent.identifier)
+        def fail(_):
+            raise TimeoutError("DNS timeout")
+        self.backend.observe = fail
+        with self.assertRaises(TimeoutError):
+            self.svc.assess_recovery(intent.identifier)
+        self.assertEqual(self.journal.get(intent.identifier).state, UpdateState.APPLYING)
+
     def test_invalid_key(self):
         with self.assertRaises(ValueError):
             self.svc.submit("client", self.rr, "invalid key")
