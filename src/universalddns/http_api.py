@@ -84,7 +84,7 @@ def create_app(
     if not 0 <= dyndns_wait_seconds <= 30:
         raise ValueError('invalid DynDNS2 confirmation timeout')
     gate = RateGate(rate_limit)
-    app = FastAPI(title="UniversalDDNSServer", version="0.2.0a1")
+    app = FastAPI(title="UniversalDDNSServer", version="0.3.0a1")
 
     def authenticated(request: Request, authorization: str | None, scope: str) -> APIPrincipal:
         token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
