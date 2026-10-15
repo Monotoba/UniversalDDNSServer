@@ -1,6 +1,6 @@
 # v0.3.0a1 — DynDNS2 compatibility and client usability
 
-**Status:** Planned; not tagged or published. This milestone implements the Phase 2 usability work in the original [implementation plan](../IMPLEMENTATION_PLAN.md), rather than revisiting the completed v0.2 audit/recovery scope.
+**Status:** Issues #4–#6 complete; v0.3.0a1 release gate (#7) remains pending. Not tagged or published. This milestone implements the Phase 2 usability work in the original [implementation plan](../IMPLEMENTATION_PLAN.md), rather than revisiting the completed v0.2 audit/recovery scope.
 
 ## Deliverables in order
 
@@ -25,8 +25,12 @@ Generalized RRset types, transactional migration framework, production HTTPS exp
 
 ## Next action
 
-Implement Issue #4 first; do not perform another VM update until there's meaningful functional progress and automated tests are passing.
+Complete Issue #7 packaging and prerelease verification after the successful functional and migration-usability work; require explicit owner approval before publishing.
 
 ## Issue #5 implementation status (2026-10-14)
 
 UDDNSUpdater now provides a discoverable `UniversalDDNSDynDNS2` adapter in `providers/provider_universalddns_dyndns2.py`, alongside the existing intent-aware REST adapter. The server CI pins UDDNSUpdater revision `2377a52c109dbb43cf624b147eaaf2483232db87`. Cross-repository isolated BIND 9 tests cover verified publication, unchanged responses, and denial of invalid credentials; the unchanged REST adapter remains tested. Both repositories' CI suites passed on this implementation. Issue #5 is closed. Next: Issue #6 installation and migration usability.
+
+## Issue #6 completion (2026-10-14)
+
+Published an [experimental v0.3 local upgrade and troubleshooting guide](V0_3_LOCAL_UPGRADE.md), linked it from the README and added regression coverage ensuring pre-existing SQLite credentials, durable REST intents and idempotency keys survive startup with DynDNS2 enabled. Static quality, unit/docs and all Python 3.11–3.13 BIND 9 integration CI checks passed at the documentation commit. No new configuration field or schema migration is required for DynDNS2. Actual VM upgrade was intentionally not performed; existing install remains unchanged. Issue #6 is closed. Remaining milestone work: Issue #7 release candidate and owner-approved prerelease.
