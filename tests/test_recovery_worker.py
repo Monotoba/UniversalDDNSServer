@@ -54,6 +54,34 @@ class RecoveryWorkerTests(unittest.TestCase):
                 self.assertEqual(worker.run_once().inspected, 0)
                 self.assertEqual(backend.writes, 0)
 
+    def test_journal_batch_limits_and_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "journal.db"
+            with SQLiteIntentJournal(path) as journal:
+                records = [RecordSet("example.org", f"node{index}.example.org", "A", 60,
+                                     (f"192.0.2.{50 + index}",)) for index in range(3)]
+                intents = [journal.enqueue("device", record) for record in records]
+                self.assertEqual([i.identifier for i in journal.pending(limit=2)],
+                                 [i.identifier for i in intents[:2]])
+                self.assertEqual(len(journal.pending()), 3)
+                for value in (0, -1, True, 1.5, 10001):
+                    with self.subTest(value=value):
+                        with self.assertRaises(ValueError):
+                            journal.pending(limit=value)
+                        with self.assertRaises(ValueError):
+                            journal.expired_leases(limit=value)
+                for intent in intents:
+                    journal.claim_with_lease(intent.identifier)
+                with sqlite3.connect(path) as db:
+                    db.execute("UPDATE update_intents SET lease_expires_at=0")
+                self.assertEqual(len(journal.expired_leases(limit=2)), 2)
+                self.assertEqual(len(journal.expired_leases()), 3)
+                backend = Backend()
+                worker = RecoveryWorker(journal, UpdateOrchestrator(Allow(), journal, backend))
+                self.assertEqual(worker.run_once(max_items=2).inspected, 2)
+                self.assertEqual(worker.run_once(max_items=2).inspected, 2)
+                self.assertEqual(backend.writes, 0)
+
     def test_batch_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             with SQLiteIntentJournal(Path(directory) / "journal.db") as journal:
