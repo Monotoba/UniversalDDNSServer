@@ -23,6 +23,8 @@ class CatalogWorkerAuthorizationTests(unittest.TestCase):
             settings = SimpleNamespace(database=db, records={"legacy": static})
             with RecordCatalog(db) as catalog:
                 catalog.create("dynamic", managed)
+            with TokenStore(db):
+                pass  # Initialize credential schema before a policy snapshot.
             policy = Policy.for_settings(settings)
             self.assertFalse(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
