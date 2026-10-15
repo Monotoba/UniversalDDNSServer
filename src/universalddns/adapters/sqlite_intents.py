@@ -26,6 +26,7 @@ class SQLiteIntentJournal:
                 state TEXT NOT NULL CHECK (state IN ('pending','applying','applied','failed')),
                 error TEXT,
                 request_key TEXT,
+                generation INTEGER NOT NULL DEFAULT 0,
                 owner_token TEXT,
                 lease_expires_at INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -37,6 +38,8 @@ class SQLiteIntentJournal:
                 self._db.execute("ALTER TABLE update_intents ADD COLUMN owner_token TEXT")
             if "request_key" not in columns:
                 self._db.execute("ALTER TABLE update_intents ADD COLUMN request_key TEXT")
+            if "generation" not in columns:
+                self._db.execute("ALTER TABLE update_intents ADD COLUMN generation INTEGER NOT NULL DEFAULT 0")
             self._db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS one_active_intent_per_rrset
                 ON update_intents(zone,name,record_type)
                 WHERE state IN ('pending','applying')""")
@@ -92,6 +95,15 @@ class SQLiteIntentJournal:
                             RecordSet(zone, name, kind, ttl, tuple(json.loads(values))),
                             UpdateState(state), error)
 
+    def generation(self, identifier: str) -> int:
+        """Read durable journal generation for future conditional operator decisions."""
+        row = self._db.execute(
+            "SELECT generation FROM update_intents WHERE identifier=?", (identifier,)
+        ).fetchone()
+        if row is None:
+            raise UnknownIntent(identifier)
+        return row[0]
+
     def claim_with_lease(self, identifier: str, *, lease_seconds: int = 30) -> str | None:
         """Claim pending work atomically with a persisted deadline."""
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
@@ -99,7 +111,7 @@ class SQLiteIntentJournal:
         token = str(uuid4())
         with self._db:
             result = self._db.execute(
-                "UPDATE update_intents SET state='applying',owner_token=?, "
+                "UPDATE update_intents SET state='applying',generation=generation+1,owner_token=?, "
                 "lease_expires_at=CAST(strftime('%s','now') AS INTEGER)+? "
                 "WHERE identifier=? AND state='pending'",
                 (token, lease_seconds, identifier),
@@ -111,7 +123,8 @@ class SQLiteIntentJournal:
             raise ValueError("invalid lease duration")
         with self._db:
             result = self._db.execute(
-                "UPDATE update_intents SET lease_expires_at=CAST(strftime('%s','now') AS INTEGER)+? "
+                 "UPDATE update_intents SET generation=generation+1, "
+                "lease_expires_at=CAST(strftime('%s','now') AS INTEGER)+? "
                 "WHERE identifier=? AND owner_token=? AND state='applying' "
                 "AND lease_expires_at>CAST(strftime('%s','now') AS INTEGER)",
                 (lease_seconds, identifier, token),
@@ -143,7 +156,7 @@ class SQLiteIntentJournal:
         state = "applied" if succeeded else "failed"
         with self._db:
             cur = self._db.execute(
-                "UPDATE update_intents SET state=?,error=?,owner_token=NULL,lease_expires_at=NULL "
+                 "UPDATE update_intents SET state=?,generation=generation+1,error=?,owner_token=NULL,lease_expires_at=NULL "
                 "WHERE identifier=? AND state='applying' AND owner_token=? "
                 "AND (lease_expires_at IS NULL OR lease_expires_at>CAST(strftime('%s','now') AS INTEGER))",
                 (state, None if succeeded else (error or "backend failure"),
@@ -163,7 +176,7 @@ class SQLiteIntentJournal:
     def mark_verified(self, identifier: str) -> None:
         """Conclude an ambiguous attempt after an authoritative observation."""
         with self._db:
-            cur = self._db.execute("""UPDATE update_intents SET state='applied',error=NULL,owner_token=NULL,lease_expires_at=NULL
+            cur = self._db.execute("""UPDATE update_intents SET state='applied',generation=generation+1,error=NULL,owner_token=NULL,lease_expires_at=NULL
                 WHERE identifier=? AND state IN ('applying','failed')
                     AND (state='failed' OR lease_expires_at IS NULL
                     OR lease_expires_at<=CAST(strftime('%s','now') AS INTEGER))""", (identifier,))
@@ -174,7 +187,7 @@ class SQLiteIntentJournal:
         """Explicit retry, only after caller has checked authoritative state."""
         try:
             with self._db:
-                cur = self._db.execute("""UPDATE update_intents SET state='pending',error=NULL,owner_token=NULL,lease_expires_at=NULL
+                cur = self._db.execute("""UPDATE update_intents SET state='pending',generation=generation+1,error=NULL,owner_token=NULL,lease_expires_at=NULL
                     WHERE identifier=? AND state IN ('applying','failed')
                     AND (state='failed' OR lease_expires_at IS NULL
                     OR lease_expires_at<=CAST(strftime('%s','now') AS INTEGER))""", (identifier,))
