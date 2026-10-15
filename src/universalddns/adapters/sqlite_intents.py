@@ -104,6 +104,24 @@ class SQLiteIntentJournal:
             raise UnknownIntent(identifier)
         return row[0]
 
+    def require_generation(self, identifier: str, expected_generation: int) -> None:
+        """Atomically validate a journal snapshot without changing intent state.
+
+        This check is only a building block: a future mutation must include
+        its expected generation in the SAME SQL UPDATE transaction.
+        """
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise ValueError("invalid expected generation")
+        with self._db:
+            row = self._db.execute(
+                "SELECT generation FROM update_intents WHERE identifier=?",
+                (identifier,),
+            ).fetchone()
+            if row is None:
+                raise UnknownIntent(identifier)
+            if row[0] != expected_generation:
+                raise UpdateConflict("stale intent generation")
+
     def claim_with_lease(self, identifier: str, *, lease_seconds: int = 30) -> str | None:
         """Claim pending work atomically with a persisted deadline."""
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
