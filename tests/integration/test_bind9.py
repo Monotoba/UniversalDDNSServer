@@ -466,6 +466,92 @@ class Bind9IntegrationTests(unittest.TestCase):
         finally:
             sys.path.remove(source)
 
+    def test_sigkill_after_real_bind_update_is_reconciled(self):
+        """Real signed DNS write survives worker SIGKILL without replay."""
+        import signal
+        import sqlite3
+        import sys
+        from universalddns.recovery_worker import RecoveryWorker
+
+        if os.name != "posix" or not hasattr(signal, "SIGKILL"):
+            self.skipTest("requires POSIX SIGKILL")
+
+        class Allow:
+            def may_update(self, principal_id, rrset):
+                return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            db = root / "state.db"
+            marker = root / "accepted"
+            record = RecordSet("example.test", "crash-bind.example.test",
+                               "A", 120, ("192.0.2.193",))
+            with SQLiteIntentJournal(db) as journal:
+                intent = journal.enqueue("device", record)
+
+            child = """
+import os
+import signal
+import sys
+from pathlib import Path
+from universalddns.adapters.sqlite_intents import SQLiteIntentJournal
+from universalddns.adapters.rfc2136 import RFC2136Backend, RFC2136Config
+from universalddns.orchestrator import UpdateOrchestrator
+class Allow:
+    def may_update(self, principal_id, rrset):
+        return True
+class KillAfterAcceptance:
+    def __init__(self, backend):
+        self.backend = backend
+        self.capabilities = backend.capabilities
+    def publish(self, rrset):
+        self.backend.publish(rrset)
+        Path(sys.argv[5]).write_text("accepted", encoding="utf-8")
+        os.kill(os.getpid(), signal.SIGKILL)
+    def observe(self, rrset):
+        return self.backend.observe(rrset)
+backend = RFC2136Backend(RFC2136Config(
+    "example.test", "127.0.0.1", "ddns-key.", sys.argv[3],
+    port=int(sys.argv[4])))
+with SQLiteIntentJournal(sys.argv[1]) as journal:
+    UpdateOrchestrator(Allow(), journal, KillAfterAcceptance(backend)).apply(sys.argv[2])
+"""
+            killed = subprocess.run(
+                [sys.executable, "-c", child, str(db), intent.identifier,
+                 self.secret, str(self.port), str(marker)],
+                capture_output=True, text=True, timeout=15, check=False,
+            )
+            self.assertEqual(killed.returncode, -signal.SIGKILL, killed.stderr)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "accepted")
+            self.assertEqual(self.backend().observe(record), record)
+
+            class ObserveOnly:
+                def __init__(self, delegate):
+                    self.delegate = delegate
+                    self.capabilities = delegate.capabilities
+                    self.writes = 0
+                def publish(self, rrset):
+                    self.writes += 1
+                    raise AssertionError("recovery attempted a second DNS write")
+                def observe(self, rrset):
+                    return self.delegate.observe(rrset)
+
+            backend = ObserveOnly(self.backend())
+            with SQLiteIntentJournal(db) as journal:
+                worker = RecoveryWorker(
+                    journal, UpdateOrchestrator(Allow(), journal, backend))
+                self.assertEqual(journal.get(intent.identifier).state.value, "applying")
+                self.assertEqual(worker.run_once().inspected, 0)
+                with sqlite3.connect(db) as connection:
+                    connection.execute(
+                        "UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?",
+                        (intent.identifier,))
+                report = worker.run_once()
+                self.assertEqual((report.inspected, report.verified, report.errors),
+                                 (1, 1, 0))
+                self.assertEqual(journal.get(intent.identifier).state.value, "applied")
+                self.assertEqual(backend.writes, 0)
+
     def test_wrong_tsig_is_rejected(self):
         bad = self.backend(base64.b64encode(b"wrong-key").decode())
         record = RecordSet("example.test", "denied.example.test",
