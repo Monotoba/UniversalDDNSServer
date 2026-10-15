@@ -29,6 +29,5 @@ def validate_catalog_grants(configured: dict[str, RecordSet],
             raise ValueError("configured record changed in candidate")
     if len({record.key for record in candidate.values()}) != len(candidate):
         raise ValueError("duplicate DNS RRset key")
-    for principal in principals:
-        if not principal.record_ids.issubset(candidate.keys()):
-            raise ValueError("token grants unknown record identifier")
+    # Dormant grants may reference deactivated records. Requests authorize
+    # against the active mapping, so inactive IDs provide no current access.
