@@ -80,7 +80,7 @@ class CatalogDiscoveryTests(unittest.TestCase):
                 self.assertEqual(client.put(
                     "/api/v1/records/new/address", headers=headers,
                     json={"address": "2001:db8::14", "request_id": "after-disable"}
-                ).status_code, 404)
+                ).status_code, 503)
                 with journal() as j:
                     with self.assertRaises(PermissionDenied):
                         orchestrator(j).apply(identifier)
