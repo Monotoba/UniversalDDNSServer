@@ -14,6 +14,7 @@ from .adapters.sqlite_intents import SQLiteIntentJournal
 from .domain import RecordSet
 from .http_api import create_app
 from .orchestrator import UpdateOrchestrator
+from .record_snapshot import catalog_snapshot
 from .token_store import TokenStore
 from .worker import PublicationWorker
 
@@ -106,7 +107,12 @@ def factories(settings: Settings):
 def api_app():
     settings = load_settings(os.environ["UNIVERSALDDNS_CONFIG"])
     journal, orchestrator, principals = factories(settings)
-    return create_app(journal, orchestrator, settings.records, principals)
+    def readable_records():
+        mapping, _ = catalog_snapshot(settings.database, settings.records)
+        return mapping
+
+    return create_app(journal, orchestrator, settings.records, principals,
+                      record_reader=readable_records)
 
 
 def main():
