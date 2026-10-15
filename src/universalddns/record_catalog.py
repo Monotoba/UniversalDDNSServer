@@ -26,6 +26,9 @@ class RecordCatalog:
                 active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1)),
                 UNIQUE (zone,name,record_type)
             )""")
+            columns = {row[1] for row in self._db.execute("PRAGMA table_info(managed_records)")}
+            if "active" not in columns:
+                self._db.execute("ALTER TABLE managed_records ADD COLUMN active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0,1))")
 
     def set_active(self, record_id: str, *, expected_revision: int,
                    active: bool) -> int:
