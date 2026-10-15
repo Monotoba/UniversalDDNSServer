@@ -72,6 +72,33 @@ class LeaseTests(unittest.TestCase):
                 with self.assertRaises(UnknownIntent):
                     journal.generation("missing")
 
+    def test_generation_validation_rejects_stale_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "generations.db"
+            with SQLiteIntentJournal(path) as first, SQLiteIntentJournal(path) as second:
+                rrset = RecordSet("example.org", "snapshot.example.org", "A", 60,
+                                  ("192.0.2.75",))
+                intent = first.enqueue("client", rrset)
+                snapshot = first.generation(intent.identifier)
+                second.require_generation(intent.identifier, snapshot)
+                token = first.claim_with_lease(intent.identifier)
+                with self.assertRaisesRegex(UpdateConflict, "stale intent generation"):
+                    second.require_generation(intent.identifier, snapshot)
+                second.require_generation(intent.identifier, snapshot + 1)
+                first.finish_owned(intent.identifier, token, succeeded=True)
+                with self.assertRaises(UpdateConflict):
+                    second.require_generation(intent.identifier, snapshot + 1)
+
+    def test_generation_validation_bad_input_and_missing_intent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with SQLiteIntentJournal(Path(temp) / "generations.db") as journal:
+                for value in (-1, True, 1.5, "0"):
+                    with self.subTest(value=value):
+                        with self.assertRaises(ValueError):
+                            journal.require_generation("missing", value)
+                with self.assertRaises(UnknownIntent):
+                    journal.require_generation("missing", 0)
+
     def test_legacy_unfenced_transitions_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             with SQLiteIntentJournal(Path(temp) / "x.db") as db:
