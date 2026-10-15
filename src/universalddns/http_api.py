@@ -252,9 +252,10 @@ def create_app(
                 intent = journal.get(intent_id)
             except UnknownIntent as exc:
                 raise HTTPException(404, "intent not found") from exc
+        current_records = record_reader() if record_reader is not None else records
         if intent.principal_id != principal.identifier or not any(
-            rid in principal.record_ids and records[rid].key == intent.rrset.key
-            for rid in records
+            rid in principal.record_ids and current_records[rid].key == intent.rrset.key
+            for rid in current_records
         ):
             raise HTTPException(404, "intent not found")
         return {"intent_id": intent.identifier, "status": intent.state.value}
