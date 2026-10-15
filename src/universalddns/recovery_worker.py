@@ -24,7 +24,7 @@ class RecoveryWorker:
     def run_once(self, *, max_items: int = 100) -> RecoveryReport:
         if type(max_items) is not int or not 1 <= max_items <= 10000:
             raise ValueError("invalid reconciliation batch size")
-        attempts = self._journal.expired_leases()[:max_items]
+        attempts = self._journal.expired_leases(limit=max_items)
         verified = 0
         unresolved = 0
         errors = 0

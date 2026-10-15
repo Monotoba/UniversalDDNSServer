@@ -83,18 +83,22 @@ class RecoveryTests(unittest.TestCase):
             db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (attempt.identifier,))
         self.assertEqual(self.svc.reconcile(attempt.identifier).state, UpdateState.APPLYING)
         self.assertEqual(self.backend.calls, 0)
-        self.assertEqual(self.svc.reconcile(attempt.identifier, retry=True).state, UpdateState.APPLIED)
-        self.assertEqual(self.backend.calls, 1)
+        with self.assertRaises(UpdateConflict):
+            self.svc.reconcile(attempt.identifier, retry=True)
+        self.assertEqual(self.backend.calls, 0)
+        self.assertEqual(self.journal.get(attempt.identifier).state, UpdateState.APPLYING)
 
     def test_revocation_prevents_retry(self):
         attempt = self.svc.submit("client", self.rr)
-        self.journal.claim_with_lease(attempt.identifier)
-        with sqlite3.connect(self.path) as db:
-            db.execute("UPDATE update_intents SET lease_expires_at=0 WHERE identifier=?", (attempt.identifier,))
+        self.backend.fail_after_commit = True
+        with self.assertRaises(TimeoutError):
+            self.svc.apply(attempt.identifier)
+        self.backend.current = None  # authoritative mismatch after failed attempt
         self.policy.allowed = False
         with self.assertRaises(PermissionDenied):
             self.svc.reconcile(attempt.identifier, retry=True)
-        self.assertEqual(self.backend.calls, 0)
+        self.assertEqual(self.backend.calls, 1)  # original failed attempt; no retry
+
 
     def test_invalid_key(self):
         with self.assertRaises(ValueError):

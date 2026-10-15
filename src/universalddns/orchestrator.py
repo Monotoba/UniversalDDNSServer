@@ -71,6 +71,10 @@ class UpdateOrchestrator:
             audit("reconciliation_verified", intent=identifier)
             return self._journal.get(identifier)
         if retry:
+            # An expired lease does not cancel a DNS request already in flight.
+            # Requeuing an APPLYING intent could race with that original write.
+            if intent.state is UpdateState.APPLYING:
+                raise UpdateConflict("in-flight publication cannot be safely retried")
             if not self._authorizer.may_update(intent.principal_id, intent.rrset):
                 raise PermissionDenied("permission revoked before retry")
             audit("reconciliation_retry_requested", intent=identifier)

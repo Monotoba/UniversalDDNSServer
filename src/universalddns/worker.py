@@ -20,7 +20,7 @@ class PublicationWorker:
         if type(max_items) is not int or not 1 <= max_items <= 10000:
             raise ValueError("invalid batch size")
         recovery = RecoveryWorker(self.journal, self.orchestrator).run_once(max_items=max_items)
-        pending = self.journal.pending()[:max_items]
+        pending = self.journal.pending(limit=max_items)
         applied = errors = 0
         for intent in pending:
             try:

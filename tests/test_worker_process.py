@@ -41,6 +41,21 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(backend.writes, [])
 
 
+    def test_bounded_publication_keeps_remaining_pending(self):
+        with tempfile.TemporaryDirectory() as d:
+            with SQLiteIntentJournal(Path(d) / "data.db") as journal:
+                backend = Backend()
+                service = UpdateOrchestrator(Allow(), journal, backend)
+                for index in range(3):
+                    service.submit("client", RecordSet("example.org", f"node{index}.example.org", "A", 60,
+                                                       (f"192.0.2.{40 + index}",)))
+                worker = PublicationWorker(journal, service)
+                self.assertEqual(worker.run_once(max_items=2).attempted, 2)
+                self.assertEqual(len(journal.pending()), 1)
+                self.assertEqual(worker.run_once(max_items=2).attempted, 1)
+                self.assertEqual(len(journal.pending()), 0)
+                self.assertEqual(len(backend.writes), 3)
+
     def test_only_pending_runs(self):
         with tempfile.TemporaryDirectory() as d:
             with SQLiteIntentJournal(Path(d) / "data.db") as j:

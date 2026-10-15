@@ -119,12 +119,16 @@ class SQLiteIntentJournal:
             if result.rowcount != 1:
                 raise UpdateConflict("expired lease or stale worker")
 
-    def expired_leases(self) -> tuple[UpdateIntent, ...]:
-        ids = self._db.execute(
-            "SELECT identifier FROM update_intents WHERE state='applying' "
-            "AND lease_expires_at IS NOT NULL "
-            "AND lease_expires_at<=CAST(strftime('%s','now') AS INTEGER)"
-        ).fetchall()
+    def expired_leases(self, *, limit: int | None = None) -> tuple[UpdateIntent, ...]:
+        """List expired leases in stable order, optionally bounded in SQLite."""
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
+            raise ValueError("invalid expired lease limit")
+        query = ("SELECT identifier FROM update_intents WHERE state='applying' "
+                 "AND lease_expires_at IS NOT NULL "
+                 "AND lease_expires_at<=CAST(strftime('%s','now') AS INTEGER) "
+                 "ORDER BY lease_expires_at,created_at,rowid")
+        ids = self._db.execute(query + (" LIMIT ?" if limit is not None else ""),
+                               (limit,) if limit is not None else ()).fetchall()
         return tuple(self.get(identifier) for (identifier,) in ids)
 
     def claim_owned(self, identifier: str) -> str | None:
@@ -179,10 +183,13 @@ class SQLiteIntentJournal:
         except sqlite3.IntegrityError as exc:
             raise UpdateConflict("another active update exists") from exc
 
-    def pending(self) -> tuple[UpdateIntent, ...]:
-        ids = self._db.execute(
-            "SELECT identifier FROM update_intents WHERE state='pending' ORDER BY created_at,rowid"
-        ).fetchall()
+    def pending(self, *, limit: int | None = None) -> tuple[UpdateIntent, ...]:
+        """List pending intents in enqueue order, optionally bounded in SQLite."""
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 10000):
+            raise ValueError("invalid pending limit")
+        query = "SELECT identifier FROM update_intents WHERE state='pending' ORDER BY created_at,rowid"
+        ids = self._db.execute(query + (" LIMIT ?" if limit is not None else ""),
+                               (limit,) if limit is not None else ()).fetchall()
         return tuple(self.get(identifier) for (identifier,) in ids)
 
     def list_by_state(self, states: tuple[str, ...], *, limit: int = 100) -> tuple[UpdateIntent, ...]:
