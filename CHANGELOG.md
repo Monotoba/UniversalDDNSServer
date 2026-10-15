@@ -2,6 +2,13 @@
 
 All notable changes are recorded here. Published alpha versions are experimental; no stable release has been published.
 
+## [Unreleased] — candidate for v0.3.0a1 (not tagged)
+
+- Experimental DynDNS2-compatible, scope-restricted HTTP update intake; `good` only after worker publication, `nochg` after authoritative observation, otherwise conservative transient response.
+- Optional UDDNSUpdater DynDNS2 adapter and end-to-end isolated BIND 9 interoperability testing.
+- Documented experimental loopback-only migration; compatibility regression for existing REST intents, idempotency and tokens.
+- Remaining limitations: no public ingress, full DynDNS2 client variants, high availability or production disaster recovery.
+
 ## [0.2.0a1] — 2026-10-14
 
 - Structured, redacted audit events for authentication, publishing, and recovery.
