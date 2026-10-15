@@ -38,13 +38,30 @@ class RecordCatalog:
         if type(active) is not bool:
             raise ValueError("active must be boolean")
         with self._db:
-            cur = self._db.execute(
+            self._db.execute("BEGIN IMMEDIATE")
+            existing = self._db.execute(
+                "SELECT active FROM managed_records WHERE record_id=? AND revision=?",
+                (record_id, expected_revision),
+            ).fetchone()
+            if existing is None:
+                raise ValueError("missing record or stale revision")
+            if active and not existing[0]:
+                table = self._db.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='api_tokens'"
+                ).fetchone()
+                if table:
+                    for (grants_json,) in self._db.execute(
+                        "SELECT records FROM api_tokens WHERE revoked=0"
+                    ):
+                        if record_id in json.loads(grants_json):
+                            raise ValueError(
+                                "reactivation refused: revoke existing token grants first"
+                            )
+            self._db.execute(
                 "UPDATE managed_records SET active=?,revision=revision+1 "
                 "WHERE record_id=? AND revision=?",
                 (int(active), record_id, expected_revision),
             )
-            if cur.rowcount != 1:
-                raise ValueError("missing record or stale revision")
         return expected_revision + 1
 
     def active_count(self) -> int:
