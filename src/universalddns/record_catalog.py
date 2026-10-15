@@ -38,6 +38,28 @@ class RecordCatalog:
         if type(active) is not bool:
             raise ValueError("active must be boolean")
         with self._db:
+            # Reactivation must not silently restore old bearer-token grants.
+            # Operators explicitly revoke/reissue credentials before enabling.
+            if active:
+                existing = self._db.execute(
+                    "SELECT active FROM managed_records "
+                    "WHERE record_id=? AND revision=?",
+                    (record_id, expected_revision),
+                ).fetchone()
+                if existing is not None and not existing[0] and expected_revision > 1:
+                    token_table = self._db.execute(
+                        "SELECT 1 FROM sqlite_master "
+                        "WHERE type='table' AND name='api_tokens'"
+                    ).fetchone()
+                    if token_table:
+                        import json as _json
+                        grants = self._db.execute(
+                            "SELECT records FROM api_tokens WHERE revoked=0"
+                        ).fetchall()
+                        if any(record_id in _json.loads(ids) for (ids,) in grants):
+                            raise ValueError(
+                                "revoke outstanding token grants before reactivation"
+                            )
             cur = self._db.execute(
                 "UPDATE managed_records SET active=?,revision=revision+1 "
                 "WHERE record_id=? AND revision=?",
