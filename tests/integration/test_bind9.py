@@ -209,7 +209,7 @@ class Bind9IntegrationTests(unittest.TestCase):
                 self.assertEqual(client.put(
                     "/api/v1/records/dynamic/address", headers=headers,
                     json={"address": "192.0.2.74",
-                          "request_id": "catalog-test-3"}).status_code, 503)
+                          "request_id": "catalog-test-3"}).status_code, 404)
 
     def test_authenticated_http_queue_worker_to_authoritative_bind(self):
         class Allow:
