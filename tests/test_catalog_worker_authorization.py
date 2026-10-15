@@ -23,13 +23,13 @@ class CatalogWorkerAuthorizationTests(unittest.TestCase):
             settings = SimpleNamespace(database=db, records={"legacy": static})
             with RecordCatalog(db) as catalog:
                 catalog.create("dynamic", managed)
-            with TokenStore(db) as tokens:
-                token = tokens.issue("alice", frozenset({"records:write"}),
-                                     frozenset({"dynamic"}))
             policy = Policy.for_settings(settings)
             self.assertFalse(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
                 catalog.set_active("dynamic", expected_revision=1, active=True)
+            with TokenStore(db) as tokens:
+                token = tokens.issue("alice", frozenset({"records:write"}),
+                                     frozenset({"dynamic"}))
             self.assertTrue(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
                 catalog.set_active("dynamic", expected_revision=2, active=False)
