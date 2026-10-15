@@ -176,6 +176,57 @@ class HTTPTests(unittest.TestCase):
         finally:
             worker.join(timeout=3)
 
+
+    def test_existing_rest_state_survives_dyndns2_enablement(self):
+        """An existing SQLite journal and credential continue working unmodified."""
+        def journal():
+            return SQLiteIntentJournal(self.path)
+
+        def service(instance):
+            return UpdateOrchestrator(Policy(), instance, Backend())
+
+        def principals():
+            with TokenStore(self.path) as store:
+                return store.principals()
+
+        record = RecordSet("example.org", "host.example.org", "A",
+                           60, ("192.0.2.1",))
+        records = {"host": record}
+        with TokenStore(self.path) as store:
+            token = store.issue("alice",
+                                frozenset({"records:write", "intents:read"}),
+                                frozenset({"host"}))
+        with TestClient(create_app(journal, service, records, principals,
+                                   dyndns_wait_seconds=0)) as old_client:
+            prior = old_client.put(
+                "/api/v1/records/host/address",
+                headers=self.auth(token),
+                json={"address": "192.0.2.25", "request_id": "pre-upgrade-key"})
+            self.assertEqual(202, prior.status_code)
+            identifier = prior.json()["intent_id"]
+
+        # Reopen with the same database, credentials and configuration.
+        with TestClient(create_app(journal, service, records, principals,
+                                   dyndns_wait_seconds=0)) as new_client:
+            status = new_client.get("/api/v1/intents/" + identifier,
+                                    headers=self.auth(token))
+            self.assertEqual(200, status.status_code)
+            self.assertEqual("pending", status.json()["status"])
+            repeated = new_client.put(
+                "/api/v1/records/host/address", headers=self.auth(token),
+                json={"address": "192.0.2.25", "request_id": "pre-upgrade-key"})
+            self.assertEqual(identifier, repeated.json()["intent_id"])
+            header = base64.b64encode(("client:" + token).encode()).decode()
+            new_response = new_client.get(
+                "/nic/update",
+                params={"hostname": "host.example.org", "myip": "192.0.2.26"},
+                headers={"Authorization": "Basic " + header})
+            self.assertEqual("911\n", new_response.text)
+        with TokenStore(self.path) as store:
+            self.assertEqual(1, len(store.principals()))
+        with journal() as instance:
+            self.assertEqual("pending", instance.get(identifier).state.value)
+
     def test_validates_mapping_and_address(self):
         url = "/api/v1/records/host/address"
         self.assertEqual(self.client.put(url, json={"address": "::1", "request_id": "v1"},
