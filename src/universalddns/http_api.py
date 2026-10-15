@@ -115,7 +115,11 @@ def create_app(
                      authorization: str | None = Header(default=None)):
         """Discover only records allowed by the caller's scoped credential."""
         principal = authenticated(request, authorization, "intents:read")
-        visible_records = record_reader() if record_reader is not None else records
+        try:
+            visible_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="list")
+            raise HTTPException(503, "catalog view unavailable") from exc
         return {"records": [
             {"id": record_id, "name": record.name,
              "type": record.record_type, "ttl": record.ttl}
