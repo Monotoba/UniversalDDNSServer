@@ -1,6 +1,6 @@
 # v0.3.0a1 — DynDNS2 compatibility and client usability
 
-**Status:** Issues #4–#6 complete; v0.3.0a1 release gate (#7) remains pending. Not tagged or published. This milestone implements the Phase 2 usability work in the original [implementation plan](../IMPLEMENTATION_PLAN.md), rather than revisiting the completed v0.2 audit/recovery scope.
+**Status:** Complete — v0.3.0a1 published as a GitHub alpha prerelease on 2026-10-14; Issues #4–#7 completed. This milestone implements the Phase 2 usability work in the original [implementation plan](../IMPLEMENTATION_PLAN.md), rather than revisiting the completed v0.2 audit/recovery scope.
 
 ## Deliverables in order
 
@@ -25,7 +25,7 @@ Generalized RRset types, transactional migration framework, production HTTPS exp
 
 ## Next action
 
-Complete Issue #7 packaging and prerelease verification after the successful functional and migration-usability work; require explicit owner approval before publishing.
+Issue #7 release gate passed and owner-approved publication completed. Future development proceeds as a separate milestone.
 
 ## Issue #5 implementation status (2026-10-14)
 
@@ -34,3 +34,10 @@ UDDNSUpdater now provides a discoverable `UniversalDDNSDynDNS2` adapter in `prov
 ## Issue #6 completion (2026-10-14)
 
 Published an [experimental v0.3 local upgrade and troubleshooting guide](V0_3_LOCAL_UPGRADE.md), linked it from the README and added regression coverage ensuring pre-existing SQLite credentials, durable REST intents and idempotency keys survive startup with DynDNS2 enabled. Static quality, unit/docs and all Python 3.11–3.13 BIND 9 integration CI checks passed at the documentation commit. No new configuration field or schema migration is required for DynDNS2. Actual VM upgrade was intentionally not performed; existing install remains unchanged. Issue #6 is closed. Remaining milestone work: Issue #7 release candidate and owner-approved prerelease.
+
+## Release record (2026-10-14)
+
+- Published prerelease: https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.3.0a1
+- Immutable tag target / verified artifact commit: `de496a7190be72a326d30f330ab0a4cc1156cb92`.
+- Static, unit/documentation and BIND 9 integration CI green at candidate commit; wheel, sdist and SHA256SUMS attached and verified.
+- Latest documentation commits follow the release tag and do not alter its tested artifacts.
