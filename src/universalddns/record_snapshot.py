@@ -4,6 +4,7 @@ This is a preparation API; it does not enable live DNS publication.
 """
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from .domain import RecordSet
@@ -18,7 +19,7 @@ def catalog_snapshot(path: str | Path,
     """Atomically observe staged templates and unrevoked token scopes."""
     if type(max_records) is not int or not 1 <= max_records <= 1000:
         raise ValueError("invalid snapshot record limit")
-    with sqlite3.connect(str(path), timeout=5) as conn:
+    with closing(sqlite3.connect(str(path), timeout=5)) as conn:
         conn.execute("BEGIN")
         try:
             rows = conn.execute(
