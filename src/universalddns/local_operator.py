@@ -1,6 +1,7 @@
 """Local-only privileged operator identity for recovery decision proposals."""
 import os
 import pwd
+import grp
 
 
 def local_operator_identity() -> str:
@@ -20,4 +21,11 @@ def local_operator_identity() -> str:
         c.isalnum() or c in "-_." for c in identity
     ):
         raise PermissionError("unsupported local operator identity")
+    try:
+        operator_group = grp.getgrnam("universalddns-operators")
+        supplementary = os.getgrouplist(identity, pwd.getpwuid(euid).pw_gid)
+    except (KeyError, OSError) as exc:
+        raise PermissionError("operator authorization group unavailable") from exc
+    if operator_group.gr_gid not in supplementary:
+        raise PermissionError("local account lacks operator authorization")
     return identity
