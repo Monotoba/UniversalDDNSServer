@@ -57,6 +57,37 @@ class HTTPTests(unittest.TestCase):
     def auth(self, token):
         return {"Authorization": "Bearer " + token}
 
+    def test_record_discovery_filters_by_token_record_scope(self):
+        def journal():
+            return SQLiteIntentJournal(self.path)
+
+        def service(instance):
+            return UpdateOrchestrator(Policy(), instance, Backend())
+
+        records = {
+            "second": RecordSet("example.org", "two.example.org", "AAAA",
+                                120, ("2001:db8::2",)),
+            "first": RecordSet("example.org", "one.example.org", "A",
+                               60, ("192.0.2.1",)),
+        }
+        principals = (
+            APIPrincipal.from_token("alice", self.alice,
+                                    frozenset({"intents:read"}),
+                                    frozenset({"first"})),
+            APIPrincipal.from_token("bob", self.bob,
+                                    frozenset({"records:write"}),
+                                    frozenset({"second"})),
+        )
+        with TestClient(create_app(journal, service, records, principals)) as client:
+            self.assertEqual(client.get("/api/v1/records").status_code, 401)
+            listed = client.get("/api/v1/records", headers=self.auth(self.alice))
+            self.assertEqual(listed.status_code, 200)
+            self.assertEqual(listed.json(), {"records": [
+                {"id": "first", "name": "one.example.org.", "type": "A", "ttl": 60}
+            ]})
+            self.assertEqual(client.get("/api/v1/records",
+                                        headers=self.auth(self.bob)).status_code, 403)
+
     def test_unauthenticated_and_scope(self):
         uri = "/api/v1/records/host/address"
         payload = {"address": "192.0.2.20", "request_id": "req-1"}

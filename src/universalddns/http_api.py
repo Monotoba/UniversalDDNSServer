@@ -109,6 +109,18 @@ def create_app(
     def live():
         return {"status": "live"}
 
+    @app.get("/api/v1/records")
+    def list_records(request: Request,
+                     authorization: str | None = Header(default=None)):
+        """Discover only records allowed by the caller's scoped credential."""
+        principal = authenticated(request, authorization, "intents:read")
+        return {"records": [
+            {"id": record_id, "name": record.name,
+             "type": record.record_type, "ttl": record.ttl}
+            for record_id, record in sorted(records.items())
+            if record_id in principal.record_ids
+        ]}
+
     @app.put("/api/v1/records/{record_id}/address", status_code=202)
     def update(record_id: str, body: RecordAddress, request: Request,
                authorization: str | None = Header(default=None)):
