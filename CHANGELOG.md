@@ -2,7 +2,7 @@
 
 All notable changes are recorded here. Published alpha versions are experimental; no stable release has been published.
 
-## [Unreleased] — candidate for v0.3.0a1 (not tagged)
+## [0.3.0a1] — 2026-10-14 (published prerelease)
 
 - Experimental DynDNS2-compatible, scope-restricted HTTP update intake; `good` only after worker publication, `nochg` after authoritative observation, otherwise conservative transient response.
 - Optional UDDNSUpdater DynDNS2 adapter and end-to-end isolated BIND 9 interoperability testing.
