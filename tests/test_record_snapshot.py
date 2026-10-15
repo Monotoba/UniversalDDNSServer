@@ -42,7 +42,8 @@ class RecordSnapshotTests(unittest.TestCase):
             with TokenStore(path) as tokens:
                 tokens.issue("alice", frozenset({"intents:read"}),
                              frozenset({"unknown"}))
-            with self.assertRaisesRegex(ValueError, "unknown record"):
-                catalog_snapshot(path, {})
+            mapping, principals = catalog_snapshot(path, {})
+            self.assertEqual(mapping, {"new": item})
+            self.assertEqual(principals[0].record_ids, frozenset({"unknown"}))
             with self.assertRaises(ValueError):
                 catalog_snapshot(path, {"static": item})
