@@ -17,9 +17,7 @@ def candidate_records(configured: dict[str, RecordSet],
     keys = {item.key for item in configured.values()}
     # Iterate bounded pages only when the catalog becomes paginable. Until
     # then, fail closed rather than silently omitting staged records.
-    rows = catalog._db.execute(
-        "SELECT COUNT(*) FROM managed_records WHERE active=1"
-    ).fetchone()[0]
+    rows = catalog.active_count()
     if rows > 1000:
         raise ValueError("too many staged records for candidate mapping")
     for record_id, rrset, _revision in catalog.active_records(limit=1000):
