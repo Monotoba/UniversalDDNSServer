@@ -79,7 +79,7 @@ class UpdateOrchestrator:
             "authoritative_match": matches,
             "observation": ("matches" if matches else
                             "absent" if observed is None else "differs"),
-            "next_action": ("reconcile_to_verify" if matches else
+            "next_action": ("reconcile_when_eligible" if matches else
                             "isolate_workers_and_investigate"),
             "retry_safe": False,
         }
