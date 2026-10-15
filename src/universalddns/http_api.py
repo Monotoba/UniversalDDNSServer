@@ -73,6 +73,7 @@ def create_app(
     *,
     rate_limit: int = 60,
     dyndns_wait_seconds: float = 5.0,
+    record_reader: Callable[[], dict[str, RecordSet]] | None = None,
 ) -> FastAPI:
     """Create an API using server-owned record mapping and token-hash configuration.
 
@@ -114,10 +115,11 @@ def create_app(
                      authorization: str | None = Header(default=None)):
         """Discover only records allowed by the caller's scoped credential."""
         principal = authenticated(request, authorization, "intents:read")
+        visible_records = record_reader() if record_reader is not None else records
         return {"records": [
             {"id": record_id, "name": record.name,
              "type": record.record_type, "ttl": record.ttl}
-            for record_id, record in sorted(records.items())
+            for record_id, record in sorted(visible_records.items())
             if record_id in principal.record_ids
         ]}
 
