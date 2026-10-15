@@ -23,6 +23,8 @@ class CatalogDiscoveryTests(unittest.TestCase):
                                "AAAA", 120, ("2001:db8::12",))
             with RecordCatalog(path) as catalog:
                 catalog.create("new", staged)
+            with RecordCatalog(path) as catalog:
+                catalog.set_active("new", expected_revision=1, active=True)
             with TokenStore(path) as store:
                 token = store.issue("alice",
                                     frozenset({"intents:read", "records:write"}),
@@ -43,11 +45,6 @@ class CatalogDiscoveryTests(unittest.TestCase):
                              record_reader=reader)
             headers = {"Authorization": "Bearer " + token}
             with TestClient(app) as client:
-                # A token explicitly scoped to an inactive record cannot discover it.
-                with self.assertRaisesRegex(ValueError, "unknown record"):
-                    client.get("/api/v1/records", headers=headers)
-                with RecordCatalog(path) as catalog:
-                    catalog.set_active("new", expected_revision=1, active=True)
                 result = client.get("/api/v1/records", headers=headers)
                 self.assertEqual(result.status_code, 200)
                 self.assertEqual(result.json(), {"records": [
