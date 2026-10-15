@@ -134,6 +134,83 @@ class Bind9IntegrationTests(unittest.TestCase):
         self.assertEqual(backend.observe(changed), changed)
 
 
+    def test_catalog_rest_worker_publication_and_deactivation_against_bind(self):
+        """Real BIND receives only an authorized, worker-executed catalog update."""
+        from types import SimpleNamespace
+        from uuid import uuid4
+        from universalddns.record_catalog import RecordCatalog
+        from universalddns.record_snapshot import catalog_snapshot
+        from universalddns.runtime import Policy
+        from universalddns.intents import PermissionDenied
+
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "state.db"
+            name = "catalog-" + uuid4().hex[:10] + ".example.test"
+            template = RecordSet("example.test", name, "A", 120, ("192.0.2.71",))
+            desired = RecordSet("example.test", name, "A", 120, ("192.0.2.72",))
+            static = {"legacy": RecordSet("example.test", "legacy.example.test",
+                                          "A", 60, ("192.0.2.1",))}
+            with RecordCatalog(db) as catalog:
+                catalog.create("dynamic", template)
+                catalog.set_active("dynamic", expected_revision=1, active=True)
+            with TokenStore(db) as store:
+                token = store.issue("device", frozenset({"records:write", "intents:read"}),
+                                    frozenset({"dynamic"}))
+
+            def principals():
+                with TokenStore(db) as store:
+                    return store.principals()
+
+            def journal_factory():
+                return SQLiteIntentJournal(db)
+
+            def orchestrator_factory(journal):
+                settings = SimpleNamespace(database=db, records=static)
+                return UpdateOrchestrator(Policy.for_settings(settings),
+                                          journal, self.backend())
+
+            def reader():
+                records, _ = catalog_snapshot(db, static)
+                return records
+
+            app = create_app(journal_factory, orchestrator_factory, static,
+                             principals, record_reader=reader)
+            headers = {"Authorization": "Bearer " + token}
+            with TestClient(app) as client:
+                submitted = client.put("/api/v1/records/dynamic/address",
+                                       headers=headers,
+                                       json={"address": "192.0.2.72",
+                                             "request_id": "catalog-test-1"})
+                self.assertEqual(submitted.status_code, 202)
+                self.assertIsNone(self.backend().observe(desired))
+                with journal_factory() as journal:
+                    report = PublicationWorker(journal,
+                        orchestrator_factory(journal)).run_once()
+                    self.assertEqual(report.applied, 1)
+                self.assertEqual(self.backend().observe(desired), desired)
+                self.assertEqual(client.get(
+                    "/api/v1/intents/" + submitted.json()["intent_id"],
+                    headers=headers).json()["status"], "applied")
+
+                pending = client.put("/api/v1/records/dynamic/address",
+                                     headers=headers,
+                                     json={"address": "192.0.2.73",
+                                           "request_id": "catalog-test-2"})
+                self.assertEqual(pending.status_code, 202)
+                with RecordCatalog(db) as catalog:
+                    catalog.set_active("dynamic", expected_revision=2, active=False)
+                with journal_factory() as journal:
+                    with self.assertRaises(PermissionDenied):
+                        orchestrator_factory(journal).apply(
+                            pending.json()["intent_id"])
+                blocked = RecordSet("example.test", name, "A", 120, ("192.0.2.73",))
+                self.assertEqual(self.backend().observe(desired), desired)
+                self.assertNotEqual(self.backend().observe(blocked), blocked)
+                self.assertEqual(client.put(
+                    "/api/v1/records/dynamic/address", headers=headers,
+                    json={"address": "192.0.2.74",
+                          "request_id": "catalog-test-3"}).status_code, 503)
+
     def test_authenticated_http_queue_worker_to_authoritative_bind(self):
         class Allow:
             def may_update(self, principal_id, rrset):
