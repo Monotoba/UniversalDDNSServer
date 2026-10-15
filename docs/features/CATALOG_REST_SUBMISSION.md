@@ -13,3 +13,7 @@ The HTTP handler uses a fresh validated catalog snapshot for record lookup and k
 The worker independently rechecks current record identity, activation and token grants before DNS publication; a previously queued intent is refused if its record has been deactivated or its authorization revoked. Static configured records retain their existing behavior. The HTTP server itself never calls the DNS backend to publish.
 
 **Known limit:** authorization and DNS publication are not an indivisible operation. Revocation or deactivation after the worker's final check can race a remote DNS write. Only run in the established loopback-only experimental environment. Do not interpret catalog staging as a production-safe DNS fencing protocol; isolated BIND 9 publication tests and deployment qualification are still required.
+
+## Legacy database startup migration
+
+The API initializes the managed-record catalog table (and adds the inactive activation column if needed) before accepting requests. Older SQLite databases containing only token and intent tables remain valid; their configured records still work unchanged. This migration does not activate any catalog records. The isolated separate-process BIND 9 integration checks this upgrade path.
