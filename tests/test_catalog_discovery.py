@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -10,6 +11,10 @@ from universalddns.domain import RecordSet
 from universalddns.http_api import create_app
 from universalddns.record_catalog import RecordCatalog
 from universalddns.record_snapshot import catalog_snapshot
+from universalddns.runtime import Policy
+from universalddns.orchestrator import UpdateOrchestrator
+from universalddns.ports import BackendCapabilities
+from universalddns.intents import PermissionDenied
 from universalddns.token_store import TokenStore
 
 
@@ -41,7 +46,19 @@ class CatalogDiscoveryTests(unittest.TestCase):
             def journal():
                 return SQLiteIntentJournal(path)
 
-            app = create_app(journal, lambda _j: None, static, principals,
+            class NoPublishBackend:
+                capabilities = BackendCapabilities(frozenset({"A", "AAAA"}))
+                def publish(self, rrset):
+                    raise AssertionError("HTTP must not publish DNS")
+                def observe(self, rrset):
+                    return None
+
+            settings = SimpleNamespace(database=path, records=static)
+            def orchestrator(j):
+                return UpdateOrchestrator(Policy.for_settings(settings), j,
+                                          NoPublishBackend())
+
+            app = create_app(journal, orchestrator, static, principals,
                              record_reader=reader)
             headers = {"Authorization": "Bearer " + token}
             with TestClient(app) as client:
@@ -51,11 +68,23 @@ class CatalogDiscoveryTests(unittest.TestCase):
                     {"id": "new", "name": "new.example.org.", "type": "AAAA",
                      "ttl": 120}
                 ]})
-                # Discovery never expands the existing static update routing.
+                submitted = client.put(
+                    "/api/v1/records/new/address", headers=headers,
+                    json={"address": "2001:db8::13", "request_id": "attempt"})
+                self.assertEqual(submitted.status_code, 202)
+                identifier = submitted.json()["intent_id"]
+                self.assertEqual(client.get("/api/v1/intents/" + identifier,
+                                            headers=headers).json()["status"], "pending")
+                with RecordCatalog(path) as catalog:
+                    catalog.set_active("new", expected_revision=2, active=False)
                 self.assertEqual(client.put(
                     "/api/v1/records/new/address", headers=headers,
-                    json={"address": "2001:db8::13", "request_id": "attempt"}
+                    json={"address": "2001:db8::14", "request_id": "after-disable"}
                 ).status_code, 404)
+                with journal() as j:
+                    with self.assertRaises(PermissionDenied):
+                        orchestrator(j).apply(identifier)
+                    self.assertEqual(j.get(identifier).state.value, "failed")
                 with TokenStore(path) as store:
                     store.revoke(token)
                 self.assertEqual(client.get("/api/v1/records",
