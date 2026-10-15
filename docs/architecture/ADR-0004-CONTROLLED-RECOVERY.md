@@ -64,3 +64,14 @@ Each intent now stores a nonnegative SQLite `generation`, initialized to zero in
 `RecoveryDecisionJournal` persists immutable, append-only proposals in the SQLite database: random decision ID, intent ID, expected generation, operator identifier, proposed action, observation classification, bounded rationale and creation timestamp. Insertion and generation validation happen in one SQLite transaction. Permitted proposal actions are `investigate`, `propose_verify` and `propose_abandon`; no execution path consumes these records to mutate an intent or DNS. Operator identities are caller-supplied in this internal API and **are not authenticated**; connecting them to a trusted local operator authentication mechanism is required before enabling a CLI or API entry point. The evidence classification and rationale are recorded as supplied and are not independently verified authoritative observations. They provide traceability, not authorization or safety proof. No force-retry capability has been added.
 
 Proposal writes now use `BEGIN IMMEDIATE` to serialize SQLite generation reads and decision insertion against competing SQLite writers. Database triggers reject `UPDATE` and `DELETE` of existing proposal rows. These are safeguards against accidental modifications by ordinary database clients, **not tamper-proof logs**: a database administrator can remove triggers or rewrite the SQLite file. Operator identity remains caller-supplied and unauthenticated; no externally callable proposal CLI or recovery transition is enabled.
+
+## Local proposal CLI (non-executable)
+
+On POSIX hosts the local operator CLI can append proposals with the host operating-system real/effective UID matching, non-root account name as attribution. Example (use a trusted OS account granted database access):
+
+```sh
+python -m universalddns.operator --config /etc/universalddns/config.json propose INTENT_ID --generation 1 --action investigate --observation unknown --rationale "Investigating stopped worker and DNS state"
+python -m universalddns.operator --config /etc/universalddns/config.json proposals INTENT_ID
+```
+
+No `--operator` impersonation option exists. The command refuses root, setuid/effective UID changes and unsupported user names. Linux file ownership and directory permissions govern journal write access; **do not grant arbitrary local users write access to the database or executable code**. Attribution records OS account identity, not verified evidence or proof of the human at the keyboard, and a privileged host administrator could still forge or rewrite entries. These commands never authorize or execute DNS transitions. Rationale is operator-supplied text and must not include secrets.
