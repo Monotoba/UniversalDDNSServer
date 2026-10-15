@@ -35,9 +35,12 @@ class CatalogWorkerAuthorizationTests(unittest.TestCase):
                 catalog.set_active("dynamic", expected_revision=2, active=False)
             self.assertFalse(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
-                catalog.set_active("dynamic", expected_revision=3, active=True)
+                with self.assertRaisesRegex(ValueError, "revoke existing"):
+                    catalog.set_active("dynamic", expected_revision=3, active=True)
             with TokenStore(db) as tokens:
                 tokens.revoke(token)
+            with RecordCatalog(db) as catalog:
+                catalog.set_active("dynamic", expected_revision=3, active=True)
             self.assertFalse(policy.may_update("alice", new_value))
 
     def test_changed_record_key_revokes_old_authorization(self):
