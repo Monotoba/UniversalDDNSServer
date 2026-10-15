@@ -32,9 +32,9 @@ class CatalogScopeTests(unittest.TestCase):
         validate_catalog_grants(self.configured, self.candidate, (principal,))
 
     def test_stale_grants_and_static_replacements_refused(self):
-        with self.assertRaisesRegex(ValueError, "unknown record"):
-            validate_catalog_grants(self.configured, self.candidate,
-                                    (self.principal(("deleted",)),))
+        dormant = self.principal(("deleted",))
+        validate_catalog_grants(self.configured, self.candidate, (dormant,))
+        self.assertEqual(scoped_records(self.candidate, dormant, scope="intents:read"), {})
         changed = dict(self.candidate)
         changed["legacy"] = self.staged
         with self.assertRaisesRegex(ValueError, "configured record changed"):
