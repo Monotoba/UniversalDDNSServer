@@ -15,6 +15,7 @@ from .domain import RecordSet
 from .http_api import create_app
 from .orchestrator import UpdateOrchestrator
 from .record_snapshot import catalog_snapshot
+from .record_catalog import RecordCatalog
 from .token_store import TokenStore
 from .worker import PublicationWorker
 
@@ -74,13 +75,19 @@ class Policy:
         self.records = settings.records
 
     def may_update(self, principal_id, rrset):
-        # Authorization is deliberately checked against live credential scopes.
-        with TokenStore(self.database) as store:
-            return any(p.identifier == principal_id
-                       and "records:write" in p.scopes
-                       and any(rid in p.record_ids and template.key == rrset.key
-                               for rid, template in self.records.items())
-                       for p in store.principals())
+        # Refresh BOTH the active catalog and unrevoked grants immediately
+        # before each submission or worker publication authorization check.
+        with RecordCatalog(self.database):
+            pass  # Ensure legacy DBs have the managed_records schema.
+        try:
+            records, principals = catalog_snapshot(self.database, self.records)
+        except (ValueError, KeyError):
+            return False  # Fail closed on stale grants or conflicting templates.
+        return any(p.identifier == principal_id
+                   and "records:write" in p.scopes
+                   and any(rid in p.record_ids and template.key == rrset.key
+                           for rid, template in records.items())
+                   for p in principals)
 
     @classmethod
     def for_settings(cls, settings: Settings):
