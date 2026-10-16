@@ -1,6 +1,7 @@
 """Socket activation contract and authenticated ping handler smoke checks."""
 import os
 import socket
+import time
 import stat
 import tempfile
 import threading
@@ -249,6 +250,60 @@ class BrokerLifecycleTests(unittest.TestCase):
                         stop.set()
                         thread.join(timeout=2)
                     self.assertFalse(thread.is_alive(), "listener did not stop")
+
+    def test_four_stalled_peers_do_not_serialize_healthy_ping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = directory + "/operator.sock"
+            stop = threading.Event()
+            entered = threading.Event()
+            count = [0]
+            lock = threading.Lock()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(path)
+                listener.listen(8)
+
+                def process(connection):
+                    data = connection.recv(64)
+                    if data == b"stall":
+                        with lock:
+                            count[0] += 1
+                            if count[0] == 4:
+                                entered.set()
+                        connection.settimeout(0.5)
+                        try:
+                            connection.recv(1)
+                        except TimeoutError:
+                            pass
+                    elif data == b"ping":
+                        connection.sendall(b"pong")
+
+                with patch("universalddns.operator_broker_service.handle_connection",
+                           side_effect=process):
+                    thread = threading.Thread(target=serve, args=(listener, stop),
+                                              daemon=True)
+                    thread.start()
+                    stalled = []
+                    try:
+                        for _ in range(4):
+                            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                            client.settimeout(3)
+                            client.connect(path)
+                            client.sendall(b"stall")
+                            stalled.append(client)
+                        self.assertTrue(entered.wait(2))
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                            client.settimeout(3)
+                            start = time.monotonic()
+                            client.connect(path)
+                            client.sendall(b"ping")
+                            self.assertEqual(client.recv(4), b"pong")
+                            self.assertLess(time.monotonic() - start, 2.5)
+                    finally:
+                        for client in stalled:
+                            client.close()
+                        stop.set()
+                        thread.join(3)
+                    self.assertFalse(thread.is_alive())
 
     def test_idle_listener_stops_without_incoming_clients(self):
         with tempfile.TemporaryDirectory() as directory:

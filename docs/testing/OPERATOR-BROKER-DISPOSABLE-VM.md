@@ -155,3 +155,21 @@ single-process, ping-only service; unit contract CI is not evidence of
 live enforcement. Verify them on the disposable VM with `systemctl show`
 and a service ping before considering rollout. No mutation operations or
 CLI/SQLite ACL migration is authorized.
+
+
+## 7. Bounded stalled-client observation and concurrent-handler follow-up
+
+The disposable guest ran the sequential broker with four authenticated,
+connected clients holding incomplete requests. A subsequent valid ping
+completed in **8.01 seconds**, consistent with four serial two-second read
+deadlines; a subsequent ping also succeeded. The service remained active,
+using 6,017,024 bytes of memory and one task, with the configured
+`MemoryMax=134217728` and `TasksMax=16` in effect. This is a small
+bounded experiment, **not** sustained-flood or exhaustion validation.
+
+The next implementation uses a maximum of four concurrently executing
+handlers. When full, the listener does not accept new sockets; pending
+connections remain in the kernel listen backlog rather than an unbounded
+application queue. The per-request deadlines, Linux peer authentication,
+and payload-free audit events remain unchanged. This change requires a
+separate live acceptance run on the disposable guest before promotion.
