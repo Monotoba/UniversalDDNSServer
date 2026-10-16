@@ -17,9 +17,29 @@ service_unit=/etc/systemd/system/universalddns-operator.service
 cleanup() {
   result=$?
   trap - EXIT
-  sudo systemctl stop universalddns-operator.socket universalddns-operator.service || true
-  sudo rm -f -- "$socket_unit" "$service_unit"
-  sudo systemctl daemon-reload
+  # Never report PASS when cleanup failed, and preserve units for diagnosis
+  # if systemd could not stop the broker.
+  if ! sudo systemctl stop universalddns-operator.socket universalddns-operator.service; then
+    printf 'FAIL: broker stop failed; preserving test unit files for investigation\n' >&2
+    exit 1
+  fi
+  if sudo systemctl is-active --quiet universalddns-operator.socket ||
+     sudo systemctl is-active --quiet universalddns-operator.service; then
+    printf 'FAIL: broker still active; preserving test unit files\n' >&2
+    exit 1
+  fi
+  if ! sudo rm -f -- "$socket_unit" "$service_unit"; then
+    printf 'FAIL: unable to remove broker test units\n' >&2
+    exit 1
+  fi
+  if ! sudo systemctl daemon-reload; then
+    printf 'FAIL: systemd reload after cleanup failed\n' >&2
+    exit 1
+  fi
+  if [[ -e /run/universalddns/operator.sock || -L /run/universalddns/operator.sock ]]; then
+    printf 'FAIL: broker socket path remains after shutdown\n' >&2
+    exit 1
+  fi
   exit "$result"
 }
 trap cleanup EXIT
@@ -43,5 +63,5 @@ assert directory.st_mode & stat.S_IXOTH
 PY
 # This smoke test does not yet verify peer authorization or successful ping.
 sudo systemctl stop universalddns-operator.socket universalddns-operator.service
-test ! -e /run/universalddns/operator.sock || die "RemoveOnStop failed"
+[[ ! -e /run/universalddns/operator.sock && ! -L /run/universalddns/operator.sock ]] || die "RemoveOnStop failed"
 printf 'PASS: disposable socket creation, permissions, and cleanup\n'
