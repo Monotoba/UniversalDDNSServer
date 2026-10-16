@@ -4,16 +4,16 @@
 
 ## 0. Candidate and repository state
 - [ ] Confirm feature PRs merged and no unreviewed release blockers remain.
-- [x] Align `pyproject.toml` and FastAPI metadata with v0.4.0a1 in the candidate branch; verify the final merged SHA before tagging.
+- [x] Align `pyproject.toml` and FastAPI metadata with `0.4.0a1` on `main`; release tag not created.
 - [ ] Review `CHANGELOG.md`, [draft release notes](../releases/v0.4.0a1-draft.md), README and operator/API guides.
 - [ ] Freeze a candidate commit SHA and independently review its diff and dependencies.
 
 ## 1. Automated quality gate (final candidate SHA only)
-- [ ] Static quality workflow passes (Ruff, scoped mypy).
-- [ ] Unit and documentation tests pass on Python 3.11, 3.12 and 3.13.
-- [ ] Integration matrix passes using isolated BIND 9, SQLite, REST API and worker on Python 3.11–3.13.
-- [ ] Build and inspect source distribution/wheel metadata and contents; confirm version, license and no credentials or runtime DB files.
-- [ ] Record evidence URLs and SHA for **the same candidate commit**, not just preceding development PRs.
+- [x] Static quality workflow passed for candidate `8f04de1c` ([Actions run](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895278)); must rerun after candidate changes.
+- [x] Unit and documentation tests passed for `8f04de1c` ([Actions run](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895293)); rerun after changes.
+- [x] Integration matrix passed for `8f04de1c` ([Actions run](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895286)); rerun after changes.
+- [x] CI built and inspected wheel/sdist for `8f04de1c` ([Actions run](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895445)); checked version, selected package contents, license and sensitive path patterns. More thorough manual artifact review and final tagged rebuild remain pending.
+- [x] Record five workflow runs for `8f04de1c`, including [operator CLI](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895284), all successful. **These must be refreshed for any final candidate SHA after this documentation update.**
 
 ## 2. Disposable Ubuntu VM validation
 - [ ] Preserve an independent powered-off VM disk backup/snapshot, plus protected SQLite backup; record VM disk and checkout revisions.
@@ -29,7 +29,7 @@
 ## 3. Security and operational review
 - [ ] Review OS group and filesystem ACL permissions for configuration, TSIG secret and writable SQLite directory; do not grant world access.
 - [ ] Verify credential CLI refuses root, changed UID and unauthorized users.
-- [ ] Verify intended BIND TSIG update policy for every activated test RRset.
+- [x] Verify restored BIND policy authorizes only `home.lab.invalid.` A after live validation; user's 2026-10-16 command output showed `named` active and both DNS records still resolving.
 - [ ] Review credential `cred-N` reference stability caveat and SQLite audit tamper limitations.
 - [ ] Check that no external listener, public token management, production TLS claim, or automatic ambiguous write retry was added.
 - [ ] Confirm security boundary caveats and outstanding limitations are retained in release notes.
@@ -58,4 +58,11 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Isolated operator CLI lifecycle completed `PASS: isolated operator CLI issue, block, revoke, reactivate and audit`.
 - BIND policy was explicitly extended for only `catalog-live.lab.invalid.` A; pretest authoritative NXDOMAIN confirmed.
 - Live installed test reported `PASS: active catalog -> scoped REST -> worker -> authoritative BIND A`, followed by confirmed deactivation and temporary credential revocation. It left an inactive catalog row and published DNS RRset by design.
-- **Unverified:** independent powered-off VM snapshot evidence, explicit negative TSIG-policy test, later removal of the catalog-only policy grant, ACL rollback/production permission hardening, final candidate tests and artifact inspection. These items remain unchecked until evidenced.
+- **Unverified:** independent powered-off VM snapshot evidence, explicit negative TSIG-policy test, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
+
+## 2026-10-16 candidate CI artifact evidence
+
+- Commit `8f04de1cb1393c89bfc164f1ee47d5077f1d8eef` passed [static quality](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895278), [unit/docs](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895293), [operator CLI](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895284), [BIND integration](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895286), and [package inspection](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895445).
+- Wheel: `universalddnsserver-0.4.0a1-py3-none-any.whl`, SHA-256 `81895cba827f93ab3f8df2e420ca105ffb642c4d2c1fb71921d4c1ce5647f20b`.
+- Sdist: `universalddnsserver-0.4.0a1.tar.gz`, SHA-256 `183d84ae8d51007b37b14c38f6bcdce7bb11613f7d9eec1d788cc87b0d1f9e11`.
+- Digests are from the successful **CI build**, not downloaded/published release assets. Do not claim artifact portability, reproducibility, or release verification from these values. Rebuild and verify final assets from the approved immutable tag.
