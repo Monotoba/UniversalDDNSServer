@@ -16,7 +16,7 @@
 - [x] Record five workflow runs for `8f04de1c`, including [operator CLI](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895284), all successful. **These must be refreshed for any final candidate SHA after this documentation update.**
 
 ## 2. Disposable Ubuntu VM validation
-- [x] Preserve an independent **powered-off disk backup** and protected SQLite upgrade backup; user confirmed shutdown loop waited for `shut off`, copied VM XML/QCOW2/seed ISO to `~/vm-backups/uddns-prealpha-20261016-cold/`, verified both SHA-256 checksums and `qemu-img check`, then restarted the VM (2026-10-16). Guest checkout was `a15dadf8` during VM tests; booting a restored copy is not yet verified.
+- [x] Preserve an independent **powered-off disk backup** and protected SQLite upgrade backup; user confirmed shutdown loop waited for `shut off`, copied VM XML/QCOW2/seed ISO to `~/vm-backups/uddns-prealpha-20261016-cold/`, verified both SHA-256 checksums and `qemu-img check`, then restarted the VM (2026-10-16). Guest checkout was `a15dadf8` during VM tests; the separate restored copy subsequently booted and passed service checks.
 - [ ] On actual `uddns-prealpha` guest, validate hostname, isolation, active default libvirt network and loopback API binding.
 - [x] Run guarded `update-vm.sh` upgrade and read-only `--verify`; user-provided output confirmed API/worker/named active at `a15dadf8` with backup `/var/lib/universalddns/upgrade-backup-20261016T085637Z`.
 - [x] Run static record `vm-test.sh update` against isolated `home.lab.invalid` and verify authoritative BIND output; user-provided output 2026-10-16: PASS (earlier deployed revision).
@@ -24,7 +24,8 @@
 - [x] With authorized non-root Ubuntu operator, test isolated CLI create/activate/issue/block/revoke/reactivate/audit and live installed-service catalog create/activate/issue/discover/submit/publish/deactivate/revoke. User-provided logs 2026-10-16: PASS; live name `catalog-live.lab.invalid.` published `192.0.2.73` on `a15dadf8`. Safe reactivation verified in separate isolated CLI fixture, not live service.
 - [ ] Confirm no stale token grants unrelated-record access, no accidental reactivation grant, and queued work is rejected after authorization loss; recognize in-flight write limitations.
 - [ ] Inspect local credential history; confirm verified operator identity, no bearer/digest disclosure and durable audit after restart.
-- [ ] Preserve sanitized validation output; test rollback/restore in disposable snapshot only when explicitly planned.
+- [x] Verify isolated cold-backup boot and core recovered state: separate `uddns-restore-test` without NIC booted Ubuntu 24.04, offline libguestfs found application/units/SQLite, SQLite `integrity_check` returned `ok`, and QEMU guest agent returned exit code 0 with API, worker and named all `active` (2026-10-16).
+- [ ] Exercise a controlled rollback/failure scenario and restored application-level API/DNS behavior; service activation alone is insufficient.
 
 ## 3. Security and operational review
 - [ ] Review OS group and filesystem ACL permissions for configuration, TSIG secret and writable SQLite directory; do not grant world access.
@@ -58,7 +59,7 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Isolated operator CLI lifecycle completed `PASS: isolated operator CLI issue, block, revoke, reactivate and audit`.
 - BIND policy was explicitly extended for only `catalog-live.lab.invalid.` A; pretest authoritative NXDOMAIN confirmed.
 - Live installed test reported `PASS: active catalog -> scoped REST -> worker -> authoritative BIND A`, followed by confirmed deactivation and temporary credential revocation. It left an inactive catalog row and published DNS RRset by design.
-- **Unverified:** isolated restore/boot from the verified cold disk copy, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
+- **Unverified:** restored application-level request/DNS behavior and controlled rollback, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
 
 ## 2026-10-16 candidate CI artifact evidence
 
@@ -77,4 +78,12 @@ Evidence links and disposition should be added next to each checkbox before decl
 
 - After an explicit shutdown-state polling loop completed, the operator copied `/var/lib/libvirt/images/uddns-prealpha.qcow2`, `uddns-prealpha-seed.iso` and the inactive libvirt domain XML to `~/vm-backups/uddns-prealpha-20261016-cold/`.
 - User-provided inventory: QCOW2 ~3.9 GiB, seed ISO ~366 KiB, XML ~6.5 KiB, SHA256SUMS file present. Both `sha256sum -c SHA256SUMS` entries returned `OK`; `qemu-img check` reported no errors. Guest was started and subsequently reported `running`.
-- This verifies a cold file-level recovery copy and its structural/checksum integrity. It does **not** establish successful isolated guest restoration, application-level recoverability or disaster-recovery readiness. Do not claim that restoration testing passed.
+- This verifies a cold file-level recovery copy and its structural/checksum integrity. An independent isolated restore subsequently booted and passed offline SQLite and service-active checks (below); full application-level recovery and production disaster recovery are not yet established.
+
+## 2026-10-16 isolated VM restoration evidence
+
+- User copied the cold backup to separate disk `/var/lib/libvirt/images/uddns-restore-test.qcow2` and defined `uddns-restore-test` with no network interfaces; original guest was unaffected. Restore booted to Ubuntu 24.04.5 serial login prompt.
+- Following guest shutdown, `virt-inspector` identified Ubuntu 24.04; read-only `virt-ls` confirmed `/opt/universalddns/{src,venv}`, `/var/lib/universalddns/state.sqlite3`, upgrade backup folders, `universalddns-api.service` and `universalddns-worker.service`.
+- Restored SQLite database copy passed `PRAGMA integrity_check` (`ok`), with tables `api_tokens`, `credential_audit`, `managed_records`, `sqlite_sequence`, `update_intents`. No bearer-token contents were disclosed.
+- QEMU guest-agent channel on the booted restored VM returned successful `guest-ping`; `systemctl is-active universalddns-api universalddns-worker named` exited 0 and decoded to `active`, `active`, `active` (guest process PIDs 887 and 894). Network interface list remained empty.
+- These checks demonstrate isolated boot and basic application state/service recovery, not exercised HTTP requests, BIND DNS queries after restore, in-flight failure handling, or production recovery SLAs.
