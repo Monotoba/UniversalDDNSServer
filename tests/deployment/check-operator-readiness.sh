@@ -11,11 +11,11 @@ systemd-detect-virt --vm >/dev/null || { echo "Disposable VM required" >&2; exit
 import os
 import sys
 from universalddns.local_operator import local_operator_identity
-from universalddns.runtime import load_settings
+from universalddns.runtime import load_admin_settings
 from urllib.parse import quote
 
 operator = local_operator_identity()
-settings = load_settings(sys.argv[1])
+settings = load_admin_settings(sys.argv[1])
 # Read-only SQLite connections avoid creating tables or writing schema migrations.
 import sqlite3
 uri = "file:" + quote(os.path.abspath(os.fspath(settings.database)), safe="/") + "?mode=ro"

@@ -30,7 +30,7 @@ The credential CLI's `issue`, `revoke` and `revoke-reference` operations call `l
 
 1. A **non-root** POSIX user with matching real/effective UID.
 2. Membership in the host's `universalddns-operators` group.
-3. Sufficient permissions to read the selected config and write the SQLite database **and its parent directory**, including SQLite journal/WAL files.
+3. Sufficient permissions to read the nonsecret configuration and write the SQLite database **and its parent directory**, including SQLite journal/WAL files. Administration does **not** require TSIG secret access.
 
 An administrator may create the operator group and enroll a chosen human account:
 
@@ -39,7 +39,7 @@ sudo groupadd --system universalddns-operators  # only if it does not already ex
 sudo usermod -aG universalddns-operators OPERATOR_LOGIN
 ```
 
-Start a **new login session** before attempting the CLI; verify with `id -nG`. Configure narrow filesystem ACLs/groups for that operator according to the local host policy. **Do not** use broad world-readable config permissions, change the database to mode `0666`, share the TSIG secret, or assume the service account is automatically an authorized operator. Do **not** run these commands via `sudo -u universalddns` unless that service identity is deliberately non-root and enrolled in the operator group. Since the CLI rejects UID-changing sessions, run it from a normal operator login with the appropriate direct file permissions.
+Start a **new login session** before attempting the CLI; verify with `id -nG`. Configure narrow filesystem ACLs/groups for that operator according to the local host policy. Keep the TSIG file owned by the service account with mode `0600`; do not grant operator-group access. **Do not** use broad world-readable config permissions, change the database to mode `0666`, share the TSIG secret, or assume the service account is automatically an authorized operator. Do **not** run these commands via `sudo -u universalddns` unless that service identity is deliberately non-root and enrolled in the operator group. Since the CLI rejects UID-changing sessions, run it from a normal operator login with the appropriate direct file permissions.
 
 The following examples assume `CONFIG` is an operator-readable path to the installed configuration and that the operator already has the required database permissions:
 
