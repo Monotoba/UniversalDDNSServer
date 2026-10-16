@@ -51,7 +51,7 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 publish_inventory_snapshot(self.source, self.target)
         self.assertEqual(self.target.read_bytes(), original)
-        self.assertEqual([x.name for x in self.private.iterdir()], ["inventory.sqlite3"])
+        self.assertEqual(sorted(x.name for x in self.private.iterdir()), [".inventory-publish.lock", "inventory.sqlite3"])
 
     def test_missing_database_and_unsafe_destination_refused(self):
         with self.assertRaisesRegex(ValueError, "snapshot unavailable"):
