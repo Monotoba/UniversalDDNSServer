@@ -64,6 +64,40 @@ class RecordInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory unavailable"):
             read_record_inventory(self.path)
 
+    def test_wal_sidecars_are_refused_without_mutation(self):
+        self.initialize([0, 1])
+        writer = sqlite3.connect(self.path)
+        try:
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
+                           ("third", "example.test", "third", "A", 300, "[]", 1, 1))
+            writer.commit()
+            before = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
+            with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):
+                read_record_inventory(self.path)
+            after = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
+            self.assertEqual(after, before)
+        finally:
+            writer.close()
+
+    def test_writer_reserved_lock_does_not_block_snapshot(self):
+        self.initialize([0])
+        writer = sqlite3.connect(self.path, timeout=0.2)
+        try:
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
+                           ("pending", "example.test", "pending", "A", 300, "[]", 1, 1))
+            self.assertEqual(read_record_inventory(self.path)["total_records"], 1)
+        finally:
+            writer.rollback()
+            writer.close()
+
+    def test_query_deadline_interrupts_large_scan(self):
+        self.initialize([0])
+        with patch("universalddns.record_inventory.QUERY_DEADLINE_SECONDS", -1.0):
+            with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):
+                read_record_inventory(self.path)
+
     def test_unexpected_sqlite_error_is_generic(self):
         self.initialize([0])
         with patch("universalddns.record_inventory.sqlite3.connect",
