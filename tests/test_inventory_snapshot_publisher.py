@@ -1,5 +1,6 @@
 """Isolated atomic snapshot publication tests."""
 import sqlite3
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -64,6 +65,32 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
         self.target.symlink_to(self.source)
         with self.assertRaisesRegex(ValueError, "snapshot unavailable"):
             publish_inventory_snapshot(self.source, self.target)
+
+    def test_directory_replacement_during_validation_refused(self):
+        real_replace = os.replace
+
+        def substitute(*args, **kwargs):
+            if "src_dir_fd" in kwargs:
+                replacement = self.private.parent / "private-moved"
+                self.private.rename(replacement)
+                self.private.mkdir(mode=0o700)
+                raise OSError("injected publish failure")
+            return real_replace(*args, **kwargs)
+
+        with patch("universalddns.inventory_snapshot.os.replace",
+                   side_effect=substitute):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertFalse(self.target.exists())
+
+    def test_publish_error_retains_existing_file(self):
+        publish_inventory_snapshot(self.source, self.target)
+        previous = self.target.read_bytes()
+        with patch("universalddns.inventory_snapshot.os.replace",
+                   side_effect=OSError("injected failure")):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertEqual(self.target.read_bytes(), previous)
 
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
