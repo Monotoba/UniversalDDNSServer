@@ -3,10 +3,11 @@ import os
 import socket
 import stat
 import tempfile
+import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
-from universalddns.operator_broker_service import inherited_listener, validate_endpoint_filesystem
+from universalddns.operator_broker_service import inherited_listener, serve, validate_endpoint_filesystem
 
 
 class BrokerActivationTests(unittest.TestCase):
@@ -132,6 +133,48 @@ class BrokerFilesystemTests(unittest.TestCase):
                    side_effect=FileNotFoundError):
             with self.assertRaises(FileNotFoundError):
                 validate_endpoint_filesystem()
+
+
+class BrokerLifecycleTests(unittest.TestCase):
+    def test_listener_processes_client_and_stops_cleanly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = directory + "/operator.sock"
+            stop = threading.Event()
+            handled = threading.Event()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(path)
+                listener.listen(2)
+                def process(connection):
+                    self.assertEqual(connection.recv(4), b"ping")
+                    handled.set()
+
+                with patch("universalddns.operator_broker_service.handle_connection",
+                           side_effect=process):
+                    thread = threading.Thread(target=serve, args=(listener, stop),
+                                              daemon=True)
+                    thread.start()
+                    try:
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                            client.connect(path)
+                            client.sendall(b"ping")
+                        self.assertTrue(handled.wait(2), "listener did not process client")
+                    finally:
+                        stop.set()
+                        thread.join(timeout=2)
+                    self.assertFalse(thread.is_alive(), "listener did not stop")
+
+    def test_idle_listener_stops_without_incoming_clients(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = directory + "/operator.sock"
+            stop = threading.Event()
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(path)
+                listener.listen(1)
+                thread = threading.Thread(target=serve, args=(listener, stop), daemon=True)
+                thread.start()
+                stop.set()
+                thread.join(timeout=2)
+                self.assertFalse(thread.is_alive())
 
 if __name__ == "__main__":
     unittest.main()
