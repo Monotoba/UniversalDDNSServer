@@ -1,6 +1,6 @@
 # ADR-0003 — Privileged local administration broker (proposed)
 
-**Status:** Proposed; foundation implemented, not enabled. **No** new network service, socket listener, or replacement CLI is deployed.
+**Status:** Proposed; peer-authentication and ping-only bounded protocol prototypes implemented, not enabled. **No** new network service, socket listener, or replacement CLI is deployed.
 
 ## Problem
 
@@ -10,7 +10,7 @@ The experimental local operator CLI needs `rwx` on the SQLite parent and `rw-` o
 
 Introduce a minimal single-host administration broker running under a dedicated, non-login identity with access to the SQLite state, not the TSIG secret. Use a Unix-domain socket under a root-managed runtime directory. Its clients need only permission to connect; human users should lose direct database write permission **after** a separately tested migration.
 
-Authenticate connecting clients from kernel `SO_PEERCRED` on Linux, then check the numeric UID against the local `universalddns-operators` group. Reject UID 0 and invalid/unrecognized peer identities. Do not trust any username, UID, or role supplied by request JSON. The initial `operator_peer` helper provides only this authentication primitive, not a hardened broker.
+Authenticate connecting clients from kernel `SO_PEERCRED` on Linux, then check the numeric UID against the local `universalddns-operators` group. Reject UID 0 and invalid/unrecognized peer identities. Do not trust any username, UID, or role supplied by request JSON. The `operator_peer` helper provides kernel-backed authentication; `operator_protocol` and `operator_broker` now provide a single bounded, versioned **ping-only** handler accepting no mutations. No listener, systemd unit or production admin operations are installed. The implementation is not a hardened broker.
 
 ## Required gates before enabling
 
