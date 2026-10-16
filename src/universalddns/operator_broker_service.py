@@ -10,7 +10,8 @@ import selectors
 import socket
 import stat
 import sys
-from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+from threading import BoundedSemaphore, Event
 
 from .operator_broker import handle_connection
 
@@ -84,24 +85,59 @@ def inherited_listener() -> socket.socket:
         raise
 
 
+MAX_ACTIVE_CONNECTIONS = 4
+
+
+def _handle_and_release(connection: socket.socket, slots: BoundedSemaphore) -> None:
+    """Own the accepted descriptor until the request finishes."""
+    try:
+        with connection:
+            handle_connection(connection)
+    finally:
+        slots.release()
+
+
 def serve(listener: socket.socket, stop_event: Event | None = None) -> None:
-    """Sequential handler; optional stop event supports isolated lifecycle tests."""
-    with selectors.DefaultSelector() as selector:
-        listener.setblocking(False)
-        selector.register(listener, selectors.EVENT_READ)
-        while True:
-            if not selector.select(timeout=0.1 if stop_event is not None else None):
+    """Serve up to four peers concurrently; stop accepting while full.
+
+    The kernel's bounded listen backlog holds pending clients. No unbounded
+    thread queue, per-connection thread spawning, or application-level socket
+    queue is created. Running handlers finish on shutdown.
+    """
+    slots = BoundedSemaphore(MAX_ACTIVE_CONNECTIONS)
+    with ThreadPoolExecutor(max_workers=MAX_ACTIVE_CONNECTIONS) as workers:
+        with selectors.DefaultSelector() as selector:
+            listener.setblocking(False)
+            selector.register(listener, selectors.EVENT_READ)
+            while True:
                 if stop_event is not None and stop_event.is_set():
                     break
-                continue
-            if stop_event is not None and stop_event.is_set():
-                break
-            try:
-                connection, _ = listener.accept()
-            except BlockingIOError:
-                continue
-            with connection:
-                handle_connection(connection)
+                if not slots.acquire(timeout=0.1):
+                    continue
+                if stop_event is not None and stop_event.is_set():
+                    slots.release()
+                    break
+                try:
+                    ready = selector.select(timeout=0.1 if stop_event is not None else None)
+                    if not ready:
+                        slots.release()
+                        continue
+                    try:
+                        connection, _ = listener.accept()
+                    except BlockingIOError:
+                        slots.release()
+                        continue
+                    try:
+                        workers.submit(_handle_and_release, connection, slots)
+                    except BaseException:
+                        connection.close()
+                        slots.release()
+                        raise
+                except BaseException:
+                    # Selector errors must never leak an admission slot.
+                    # A submitted worker owns its slot; submission exceptions
+                    # are handled above.
+                    raise
 
 
 def main() -> int:
