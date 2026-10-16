@@ -1,5 +1,4 @@
 """Isolated atomic snapshot publication tests."""
-import os
 import sqlite3
 import tempfile
 import unittest
