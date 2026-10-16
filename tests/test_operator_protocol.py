@@ -34,7 +34,7 @@ class OperatorProtocolTests(unittest.TestCase):
         b.settimeout(3.0)
         try:
             with patch("universalddns.operator_broker.authenticated_operator_peer",
-                       return_value="test-operator"), \\
+                       return_value="test-operator"), \
                  patch("universalddns.operator_broker.audit") as audit:
                 b.sendall(b'{"version":1,"operation":"capabilities"}\n')
                 handle_connection(a)
