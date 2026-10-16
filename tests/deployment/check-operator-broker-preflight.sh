@@ -24,8 +24,13 @@ esac
 [[ ! -e /run/universalddns/operator.sock && ! -L /run/universalddns/operator.sock ]] ||
   fail "operator socket already exists"
 for unit in universalddns-operator.socket universalddns-operator.service; do
-  [[ ! -e "/etc/systemd/system/$unit" && ! -e "/run/systemd/system/$unit" ]] ||
-    fail "broker unit already installed: $unit"
+  # A vendor unit, mask, symlink or drop-in can shadow/change test units.
+  for base in /etc/systemd/system /run/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
+    [[ ! -e "$base/$unit" && ! -L "$base/$unit" ]] ||
+      fail "broker unit already installed: $base/$unit"
+    [[ ! -e "$base/$unit.d" && ! -L "$base/$unit.d" ]] ||
+      fail "broker unit drop-in already installed: $base/$unit.d"
+  done
 done
 command -v systemctl >/dev/null || fail "systemctl missing"
 if systemctl is-active --quiet universalddns-operator.socket ||
