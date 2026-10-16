@@ -249,3 +249,18 @@ and the real broker and socket remained active.
 successful *non-failing* start on an isolated unit, and start-limit behavior
 under a broker-specific socket-triggered failure loop. Neither requires
 altering existing CLI or SQLite ACLs.
+
+
+## 10. Isolated start-limit reset and recovery — 2026-10-16
+
+Operator-provided output from `uddns-broker-test-01` confirmed six rapid
+attempts against a separate disposable `Type=oneshot` service with
+`ExecStart=/usr/bin/false`, `StartLimitIntervalSec=30s`,
+`StartLimitBurst=5`, and `Restart=no`. The journal emitted
+`Start request repeated too quickly.` The operator then ran
+`systemctl reset-failed`, replaced the test executable with
+`/usr/bin/true`, reloaded systemd, and verified a successful start.
+The real broker's authenticated ping succeeded, and the temporary test unit
+was cleaned up. The isolated test used a **30-second** window, not the
+broker's **10-second** window. This does not prove socket-triggered
+recovery from repeated broker-specific startup failures.
