@@ -48,4 +48,4 @@ def send_response(connection: socket.socket, result: dict[str, object]) -> None:
     data = (json.dumps(result, separators=(",", ":"), sort_keys=True) + "\n").encode()
     if len(data) > MAX_RESPONSE_BYTES:
         raise ValueError("response too large")
-    connection.sendall(data)
+    # A peer that stops reading must not hold the sequential broker indefinitely.\n    # Python socket sendall uses this timeout as a total send budget.\n    connection.settimeout(SOCKET_TIMEOUT)\n    connection.sendall(data)
