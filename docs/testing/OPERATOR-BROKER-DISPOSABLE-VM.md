@@ -224,3 +224,28 @@ previously encountered the start limit). Do not add an automatic restart
 loop or increase rate thresholds without empirical disposable-guest testing.
 The opt-in socket remains enabled only on this disposable VM, not in
 production. The broker is still ping-only.
+
+
+## 9. Start-rate enforcement: isolated guest test — 2026-10-16
+
+The operator verified the updated unit configuration on `uddns-broker-test-01`:
+`Restart=no`, `StartLimitIntervalUSec=10s`, `StartLimitBurst=5`, and
+socket `Backlog=16`; both real units remained active and an authenticated
+ping passed.
+
+A separate temporary unit under `/run/systemd/system/` intentionally
+executed `/usr/bin/false` with the same restart and start-limit settings.
+Six explicit start attempts took place between 17:55:40 and 17:55:41 UTC.
+The journal recorded repeated failed process starts and, on the sixth
+attempt, the decisive message **`Start request repeated too quickly.`**
+The test script incorrectly expected `systemctl show -p Result` to equal
+`start-limit-hit`; it remained `exit-code` on this systemd 255 guest.
+Therefore, inspect the start operation and service journal to distinguish a
+refused start from an ordinary process failure; do not use the stored
+`Result` alone as the acceptance oracle. The temporary unit was removed,
+and the real broker and socket remained active.
+
+**Still unverified:** an explicit `systemctl reset-failed` followed by a
+successful *non-failing* start on an isolated unit, and start-limit behavior
+under a broker-specific socket-triggered failure loop. Neither requires
+altering existing CLI or SQLite ACLs.
