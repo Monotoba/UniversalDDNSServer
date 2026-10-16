@@ -3,7 +3,7 @@ import os
 import socket
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from universalddns.operator_broker_service import inherited_listener
 
@@ -45,43 +45,31 @@ class BrokerActivationTests(unittest.TestCase):
                             inherited_listener()
 
 
-    def test_other_socket_inside_runtime_directory_refused(self):
-        """A sibling name must not be accepted merely for sharing a prefix."""
-        with tempfile.TemporaryDirectory() as directory:
-            path = directory + "/other.sock"
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-                listener.bind(path)
-                listener.listen(1)
-                with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
-                                             "LISTEN_FDS": "1"}, clear=True):
-                    with patch("universalddns.operator_broker_service.os.fstat",
-                               return_value=os.fstat(listener.fileno())), \
-                         patch("universalddns.operator_broker_service.socket.fromfd",
-                               return_value=listener.dup()):
-                        # Pretend the listener is under the configured parent,
-                        # but give it the wrong basename.
-                        with patch.object(socket.socket, "getsockname",
-                                          return_value="/run/universalddns/other.sock"):
-                            with self.assertRaisesRegex(RuntimeError, "unexpected Unix socket path"):
-                                inherited_listener()
+    def test_sibling_socket_inside_runtime_directory_refused(self):
+        self._assert_unexpected_endpoint("/run/universalddns/other.sock")
 
     def test_nested_socket_inside_runtime_directory_refused(self):
-        """A nested path is not the configured socket endpoint."""
-        with tempfile.TemporaryDirectory() as directory:
-            path = directory + "/other.sock"
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-                listener.bind(path)
-                listener.listen(1)
-                with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
-                                             "LISTEN_FDS": "1"}, clear=True):
-                    with patch("universalddns.operator_broker_service.os.fstat",
-                               return_value=os.fstat(listener.fileno())), \
-                         patch("universalddns.operator_broker_service.socket.fromfd",
-                               return_value=listener.dup()):
-                        with patch.object(socket.socket, "getsockname",
-                                          return_value="/run/universalddns/nested/operator.sock"):
-                            with self.assertRaisesRegex(RuntimeError, "unexpected Unix socket path"):
-                                inherited_listener()
+        self._assert_unexpected_endpoint("/run/universalddns/nested/operator.sock")
+
+    def test_parent_directory_prefix_trick_refused(self):
+        self._assert_unexpected_endpoint("/run/universalddns-evil/operator.sock")
+
+    def _assert_unexpected_endpoint(self, endpoint):
+        """Exercise full activation checks without altering process fd 3."""
+        candidate = MagicMock()
+        candidate.family = socket.AF_UNIX
+        candidate.type = socket.SOCK_STREAM
+        candidate.getsockopt.return_value = 1
+        candidate.getsockname.return_value = endpoint
+        with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
+                                     "LISTEN_FDS": "1"}, clear=True):
+            with patch("universalddns.operator_broker_service.os.fstat",
+                       return_value=os.stat_result((0o140000, 0, 0, 0, 0, 0, 0, 0, 0, 0))), \\
+                 patch("universalddns.operator_broker_service.socket.fromfd",
+                       return_value=candidate):
+                with self.assertRaisesRegex(RuntimeError, "unexpected Unix socket path"):
+                    inherited_listener()
+        candidate.close.assert_called_once_with()
 
 
 if __name__ == "__main__":
