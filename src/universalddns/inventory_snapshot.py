@@ -1,6 +1,7 @@
 """Isolated SQLite snapshot producer; not wired to the broker or services."""
 import os
 import sqlite3
+import stat
 import tempfile
 import time
 from pathlib import Path
@@ -28,15 +29,23 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
     """
     target = Path(destination)
     parent = target.parent
-    mode = parent.stat().st_mode
-    if not parent.is_dir() or mode & 0o077:
-        raise ValueError("snapshot unavailable")
-    if target.is_symlink():
-        raise ValueError("snapshot unavailable")
-    fd, temp_name = tempfile.mkstemp(prefix=".inventory-", suffix=".sqlite3", dir=parent)
-    os.close(fd)
-    temp = Path(temp_name)
     try:
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077:
+            raise ValueError("snapshot unavailable")
+        if target.is_symlink():
+            raise ValueError("snapshot unavailable")
+        # Pin directory identity across staging and final publication.
+        directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise ValueError("snapshot unavailable") from exc
+    if os.fstat(directory_fd).st_ino != info.st_ino or os.fstat(directory_fd).st_dev != info.st_dev:
+        os.close(directory_fd)
+        raise ValueError("snapshot unavailable")
+    try:
+        fd, temp_name = tempfile.mkstemp(prefix=".inventory-", suffix=".sqlite3", dir=parent)
+        os.close(fd)
+        temp = Path(temp_name)
         os.chmod(temp, 0o600)
         uri = "file:" + quote(
             os.path.abspath(os.fspath(source)), safe="/"
@@ -50,14 +59,18 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
         counts = read_record_inventory(temp)
         with temp.open("rb") as f:
             os.fsync(f.fileno())
-        os.replace(temp, target)
-        directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        # Refuse directory substitution and destination symlink races.
+        if os.stat(parent, follow_symlinks=False).st_ino != info.st_ino:
+            raise ValueError("snapshot unavailable")
+        if target.is_symlink():
+            raise ValueError("snapshot unavailable")
+        os.replace(temp.name, target.name, src_dir_fd=directory_fd,
+                   dst_dir_fd=directory_fd)
+        os.fsync(directory_fd)
         return counts
     except (OSError, sqlite3.Error, ValueError) as exc:
         raise ValueError("snapshot unavailable") from exc
     finally:
-        temp.unlink(missing_ok=True)
+        if 'temp' in locals():
+            temp.unlink(missing_ok=True)
+        os.close(directory_fd)
