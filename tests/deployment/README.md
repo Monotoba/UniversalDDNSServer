@@ -34,19 +34,50 @@ Copy the actual VM_IP from virsh. Reboot using `virsh -c qemu:///system reboot u
 
 The launcher stores the cached Ubuntu cloud image in `~/VMs/uddns-prealpha` but installs the *runtime* qcow2 disk and seed ISO under `/var/lib/libvirt/images` to avoid QEMU home-directory access and AppArmor failures. It detects an already active default NAT network. It refuses to overwrite a VM definition or existing runtime disk.
 
-The guest script installs an isolated BIND 9 lab zone (`lab.invalid`), a loopback-only HTTP API, and the publishing worker. Its test results are not proof of production security or public deployment readiness.
+The guest script installs an isolated BIND 9 lab zone (`lab.invalid`), a loopback-only HTTP API, and the publishing worker. For a **new disposable VM**, the installer issues the initial `vm-test` credential through the trusted `TokenStore` fixture API as the service account. This does **not** use or bypass the operator-gated credential CLI; its audit operator is `null` (internal fixture issuance). Production administrators must instead use an authorized non-root operator as described in the [v0.4 operator guide](../../docs/operations/V0_4_LOCAL_OPERATOR_UPGRADE.md). Its test results are not proof of production security or public deployment readiness.
 
 **Archive path:** reports are generated in `/home/ubuntu/uddns-validation-TIMESTAMP.tar.gz`, *not* `~/uddns-results/`. Review before sharing; logs can contain sensitive data. The restore test makes a SQLite online backup and restores into a separate scratch database, comparing all table contents to the original; it never replaces the live database. The recovery test stops the worker **before** queuing an update, verifies persisted pending intent and idempotency, restarts the worker, and checks authoritative DNS. It does not cover a crash during an in-flight DNS publication or prove exactly-once transport.
 
-For a VM installed from an earlier checkout, first update the guest repository and copy the new script into the home directory:
+For a VM installed from an earlier checkout, use the safeguarded updater above to upgrade source, package and services together. **Do not replace an installed-VM upgrade with a bare `git pull`.** To refresh only a standalone test script *after* a verified upgrade:
 
 ```sh
-ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh'
+ssh ubuntu@VM_IP 'cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh'
 ```
 
 Each mode writes a `*.log.json` with test name, PASS/FAIL and exit code under `~/uddns-results/`. Keep the local token outside Git; inspect report archives before sharing.
 
 The `inflight` test is a **deterministic simulated post-publication timeout** using a disposable SQLite database and fake authoritative backend; it validates reconciliation without a second publish. It is not proof of actual SIGKILL timing, BIND transport exactly-once semantics, or fully offline production database restoration. The `report` command now includes its own final result in the archive.
+
+## Current v0.4 development validation sequence
+
+For an **already installed** `uddns-prealpha` VM, take an independent VM snapshot or offline disk backup **before** upgrading. From the host, discover the current IP (do not reuse a sample address):
+
+```sh
+sudo virsh list --all
+sudo virsh domifaddr uddns-prealpha
+sudo virsh net-dhcp-leases default
+ssh ubuntu@VM_IP 'hostname && hostname -I'
+```
+
+Verify the remote hostname really is `uddns-prealpha`. Then upgrade the installed fixture with its safeguarded updater:
+
+```sh
+ssh ubuntu@VM_IP 'curl -fsSL https://raw.githubusercontent.com/Monotoba/UniversalDDNSServer/main/tests/deployment/update-vm.sh -o ~/update-vm.sh'
+ssh ubuntu@VM_IP 'bash ~/update-vm.sh'
+ssh ubuntu@VM_IP 'bash ~/update-vm.sh --verify'
+```
+
+After the updater passes, run the intended authoritative DNS-writing regression **only against the isolated BIND 9 lab zone**:
+
+```sh
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh update'
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh tsig-deny'
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh report'
+```
+
+The `update` mode tests only the **static** `home.lab.invalid` A record: authenticated REST enqueue → separate worker → observed authoritative BIND result. The `tsig-deny` mode proves the key cannot update a different name. Neither mode exercises dynamic record catalog creation/activation, credential CLI group membership, reactivation blockers or SQLite audit attribution. For these v0.4 features, use the dedicated Python unit and BIND integration suite; do **not** claim complete installed-VM feature coverage from `vm-test.sh`.
+
+The `--verify` updater mode validates installed services without deliberately publishing DNS. The `report` mode collects local evidence; inspect archives for sensitive output before sharing. `offline-restore` modifies the installed VM database and requires an independent snapshot; do not run it as routine read-only verification. Keep the VM loopback-only and avoid production zones.
 
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 
