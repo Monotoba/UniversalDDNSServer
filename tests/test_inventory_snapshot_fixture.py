@@ -29,6 +29,8 @@ class InventorySnapshotFixtureTests(unittest.TestCase):
                 with sqlite3.connect(f"file:{live}?mode=ro", uri=True) as reader:
                     with sqlite3.connect(snap) as destination:
                         reader.backup(destination)
+                        mode = destination.execute("PRAGMA journal_mode=DELETE").fetchone()
+                        self.assertEqual(mode, ("delete",))
                 self.assertEqual(snap.read_bytes()[18:20], bytes((1, 1)))
                 self.assertFalse(Path(str(snap) + "-wal").exists())
                 self.assertFalse(Path(str(snap) + "-shm").exists())
