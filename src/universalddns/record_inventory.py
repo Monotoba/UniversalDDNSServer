@@ -17,10 +17,17 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
     """
     db_path = os.path.abspath(os.fspath(path))
     uri = "file:" + quote(db_path, safe="/") + "?mode=ro&immutable=0"
-    # The WAL shared-memory sidecar may be updated by mode=ro readers.
+    # A WAL database can lack sidecars yet opening it can create or alter them.
     # Refuse WAL sidecars until a separately validated snapshot design exists.
     if any(os.path.exists(db_path + suffix) for suffix in ("-wal", "-shm")):
         raise ValueError("inventory unavailable")
+    try:
+        with open(db_path, "rb") as source:
+            header = source.read(20)
+        if header[:16] != b"SQLite format 3\\x00" or header[18:20] != b"\\x01\\x01":
+            raise ValueError("inventory unavailable")
+    except OSError as exc:
+        raise ValueError("inventory unavailable") from exc
     deadline = time.monotonic() + QUERY_DEADLINE_SECONDS
     try:
         with sqlite3.connect(uri, uri=True, timeout=0.2) as db:
