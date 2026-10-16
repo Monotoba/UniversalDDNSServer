@@ -16,7 +16,7 @@
 - [x] Record five workflow runs for `8f04de1c`, including [operator CLI](https://github.com/Monotoba/UniversalDDNSServer/actions/runs/38878895284), all successful. **These must be refreshed for any final candidate SHA after this documentation update.**
 
 ## 2. Disposable Ubuntu VM validation
-- [ ] Preserve an independent powered-off VM disk backup/snapshot, plus protected SQLite backup; record VM disk and checkout revisions.
+- [x] Preserve an independent **powered-off disk backup** and protected SQLite upgrade backup; user confirmed shutdown loop waited for `shut off`, copied VM XML/QCOW2/seed ISO to `~/vm-backups/uddns-prealpha-20261016-cold/`, verified both SHA-256 checksums and `qemu-img check`, then restarted the VM (2026-10-16). Guest checkout was `a15dadf8` during VM tests; booting a restored copy is not yet verified.
 - [ ] On actual `uddns-prealpha` guest, validate hostname, isolation, active default libvirt network and loopback API binding.
 - [x] Run guarded `update-vm.sh` upgrade and read-only `--verify`; user-provided output confirmed API/worker/named active at `a15dadf8` with backup `/var/lib/universalddns/upgrade-backup-20261016T085637Z`.
 - [x] Run static record `vm-test.sh update` against isolated `home.lab.invalid` and verify authoritative BIND output; user-provided output 2026-10-16: PASS (earlier deployed revision).
@@ -58,7 +58,7 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Isolated operator CLI lifecycle completed `PASS: isolated operator CLI issue, block, revoke, reactivate and audit`.
 - BIND policy was explicitly extended for only `catalog-live.lab.invalid.` A; pretest authoritative NXDOMAIN confirmed.
 - Live installed test reported `PASS: active catalog -> scoped REST -> worker -> authoritative BIND A`, followed by confirmed deactivation and temporary credential revocation. It left an inactive catalog row and published DNS RRset by design.
-- **Unverified:** independent powered-off VM snapshot evidence, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
+- **Unverified:** isolated restore/boot from the verified cold disk copy, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
 
 ## 2026-10-16 candidate CI artifact evidence
 
@@ -72,3 +72,9 @@ Evidence links and disposition should be added next to each checkbox before decl
 - After restoring BIND's original named-only update policy, the operator executed `vm-test.sh tsig-deny` on `uddns-prealpha`.
 - The attempt to update `disallowed-tsig-probe.lab.invalid.` with the valid lab TSIG credential was rejected with `REFUSED`; the probe did not create an A record. Test exit reported `FINAL_RESULT=PASS`, with guest log `/home/ubuntu/uddns-results/20261016T092020Z-tsig-deny.log`.
 - Evidence is user-provided CLI output. No secret material was included. This verifies the restricted policy for the tested name, not every possible DNS ACL or production deployment.
+
+## 2026-10-16 verified cold VM disk backup
+
+- After an explicit shutdown-state polling loop completed, the operator copied `/var/lib/libvirt/images/uddns-prealpha.qcow2`, `uddns-prealpha-seed.iso` and the inactive libvirt domain XML to `~/vm-backups/uddns-prealpha-20261016-cold/`.
+- User-provided inventory: QCOW2 ~3.9 GiB, seed ISO ~366 KiB, XML ~6.5 KiB, SHA256SUMS file present. Both `sha256sum -c SHA256SUMS` entries returned `OK`; `qemu-img check` reported no errors. Guest was started and subsequently reported `running`.
+- This verifies a cold file-level recovery copy and its structural/checksum integrity. It does **not** establish successful isolated guest restoration, application-level recoverability or disaster-recovery readiness. Do not claim that restoration testing passed.
