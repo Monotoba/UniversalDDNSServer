@@ -99,6 +99,18 @@ bash /opt/universalddns/src/tests/deployment/check-operator-readiness.sh
 
 This is a strictly read-only preflight: it verifies the disposable hostname and VM environment, POSIX authorization, configuration access, SQLite read access and the presence of catalog, credential and audit tables. It uses SQLite `mode=ro`, never invokes CLI commands that can initialize tables or migrate schemas, and never prints stored credential metadata. It does not check database write permission, attempt credential issuance, or exercise the live HTTP/BIND lifecycle. A passing preflight is **not** completion of the full v0.4 installed-VM validation gate. To confirm write access and actual operator CLI behavior, use a separately planned, snapshot-protected active test.
 
+## Authorized local CLI integration check (v0.4)
+
+After the read-only operator preflight succeeds, run this **as your actual non-root operator account** on the disposable `uddns-prealpha` guest (not as root, not using `sudo -u`):
+
+```sh
+/opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-operator-cli-lifecycle.py
+```
+
+This script creates a temporary config, private dummy TSIG file and **temporary SQLite database**. It executes the real local `record_admin` and `admin` commands as the current OS operator, verifying create, stage, credential issue, inventory, deactivation, blocker detection, reactivation refusal, reference revocation, successful reactivation, and operator-attributed audit events. It captures the temporary bearer token without displaying it. Temporary files are deleted on completion. It never touches `/var/lib/universalddns/state.sqlite3`, the installed config/TSIG key, HTTP services or authoritative DNS.
+
+**Limitations:** This validates real local OS group authorization through CLI subprocesses, but not the production-owned service database's write permissions or live REST/BIND update behavior. Use separately approved snapshot-backed testing for those operations. Passing this script must not be recorded as full v0.4 installed-host lifecycle validation.
+
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 
 After preserving a VM snapshot or backing up the virtual disk, update the VM checkout and run `bash ~/vm-test.sh offline-restore`. This mode refuses non-VM hosts and hostnames other than `uddns-prealpha`, stops both app services, backs up the stopped SQLite database, restores the same snapshot via an atomic file replacement, verifies data, service-account ownership (`universalddns:universalddns`) and restrictive permissions (`0600`), then starts both services and performs installed-host verification. Failure cleanup attempts to restore the original and restart both services. **Do not run on production systems.** The operator should still retain an independent VM snapshot in case the guest or host crashes during file replacement.
