@@ -23,6 +23,25 @@ def snapshot_is_fresh(path: str | Path, *, now: float | None = None) -> bool:
     return 0 <= age <= SNAPSHOT_MAX_AGE_SECONDS
 
 
+
+
+def _clean_abandoned_staging(directory_fd: int) -> None:
+    """Remove only validated orphan staging files while publisher lock is held.
+
+    Operates through the pinned directory descriptor to avoid path replacement.
+    Never removes the published snapshot or persistent lock inode.
+    """
+    for name in os.listdir(directory_fd):
+        if not (name.startswith(".inventory-") and name.endswith(".sqlite3")):
+            continue
+        details = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(details.st_mode)
+                or details.st_uid != os.geteuid()
+                or stat.S_IMODE(details.st_mode) != 0o600
+                or details.st_nlink != 1):
+            raise ValueError("snapshot unavailable")
+        os.unlink(name, dir_fd=directory_fd)
+
 def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> dict[str, int]:
     """Back up SQLite to an atomically replaced private standalone DB.
 
@@ -60,6 +79,7 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError("snapshot unavailable") from exc
+        _clean_abandoned_staging(directory_fd)
         fd, temp_name = tempfile.mkstemp(prefix=".inventory-", suffix=".sqlite3", dir=parent)
         os.close(fd)
         temp = Path(temp_name)
