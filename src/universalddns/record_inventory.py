@@ -17,7 +17,11 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
     """
     db_path = os.path.abspath(os.fspath(path))
     uri = "file:" + quote(db_path, safe="/") + "?mode=ro&immutable=0"
-    # The WAL shared-memory sidecar may be updated by mode=ro readers.\n    # Refuse WAL sidecars until a separately validated snapshot design exists.\n    if any(os.path.exists(db_path + suffix) for suffix in ("-wal", "-shm")):\n        raise ValueError("inventory unavailable")\n    deadline = time.monotonic() + QUERY_DEADLINE_SECONDS
+    # The WAL shared-memory sidecar may be updated by mode=ro readers.
+    # Refuse WAL sidecars until a separately validated snapshot design exists.
+    if any(os.path.exists(db_path + suffix) for suffix in ("-wal", "-shm")):
+        raise ValueError("inventory unavailable")
+    deadline = time.monotonic() + QUERY_DEADLINE_SECONDS
     try:
         with sqlite3.connect(uri, uri=True, timeout=0.2) as db:
             db.set_progress_handler(lambda: int(time.monotonic() >= deadline), 100)
