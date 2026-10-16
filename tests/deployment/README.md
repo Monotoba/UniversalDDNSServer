@@ -89,6 +89,16 @@ ssh ubuntu@VM_IP '/opt/universalddns/venv/bin/python /opt/universalddns/src/test
 
 It creates a temporary SQLite database under the running user's temporary directory and checks record staging, token grant visibility, refusal to reactivate while a stale grant exists, reference-based revocation, audit operator metadata, safe activation, and replacement credentials. It does **not** open the installed production/service SQLite database, contact HTTP/BIND, issue a usable installed-service credential, or modify any running service. The `fixture` audit actor is synthetic test metadata, **not** a verified OS operator. This test is helpful VM-side coverage, but does not replace the separate release-gate requirement to exercise real operator-group permissions and live installed-service catalog changes.
 
+## Installed-VM operator readiness preflight (v0.4)
+
+Once the safeguarded VM update has completed, run the following **from an actual non-root operator login** that is a member of `universalddns-operators` and has appropriate permissions for the configuration and database:
+
+```sh
+bash /opt/universalddns/src/tests/deployment/check-operator-readiness.sh
+```
+
+This is a strictly read-only preflight: it verifies the disposable hostname and VM environment, POSIX authorization, configuration access, SQLite read access and the presence of catalog, credential and audit tables. It uses SQLite `mode=ro`, never invokes CLI commands that can initialize tables or migrate schemas, and never prints stored credential metadata. It does not check database write permission, attempt credential issuance, or exercise the live HTTP/BIND lifecycle. A passing preflight is **not** completion of the full v0.4 installed-VM validation gate. To confirm write access and actual operator CLI behavior, use a separately planned, snapshot-protected active test.
+
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 
 After preserving a VM snapshot or backing up the virtual disk, update the VM checkout and run `bash ~/vm-test.sh offline-restore`. This mode refuses non-VM hosts and hostnames other than `uddns-prealpha`, stops both app services, backs up the stopped SQLite database, restores the same snapshot via an atomic file replacement, verifies data, service-account ownership (`universalddns:universalddns`) and restrictive permissions (`0600`), then starts both services and performs installed-host verification. Failure cleanup attempts to restore the original and restart both services. **Do not run on production systems.** The operator should still retain an independent VM snapshot in case the guest or host crashes during file replacement.
