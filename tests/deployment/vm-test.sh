@@ -91,9 +91,18 @@ CONFIG
   sudo install -m 0644 /opt/universalddns/src/deploy/universalddns-worker.service /etc/systemd/system/
   sudo systemctl daemon-reload
   umask 077
-  sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.admin \
-    --config /etc/universalddns/config.json issue --principal vm-test \
-    --record home --scope records:write --scope intents:read > "$HOME/.uddns-vm-token"
+  # Disposable fixture bootstrap: TokenStore is the trusted internal API.
+  # The operator-gated CLI cannot be run as this system service identity.
+  sudo -u universalddns /opt/universalddns/venv/bin/python - <<'PY' > "$HOME/.uddns-vm-token"
+from universalddns.token_store import TokenStore
+with TokenStore("/var/lib/universalddns/state.sqlite3") as store:
+    token = store.issue(
+        "vm-test",
+        frozenset({"records:write", "intents:read"}),
+        frozenset({"home"}),
+    )
+print(token)
+PY
   sudo systemctl enable --now universalddns-api universalddns-worker
   bash "$0" verify
   bash "$0" update
