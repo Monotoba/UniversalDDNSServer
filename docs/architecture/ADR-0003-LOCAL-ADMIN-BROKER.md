@@ -35,3 +35,23 @@ The broker's service identity can still modify SQLite audit history. Database-lo
 - The process accepts **only** one inherited systemd socket descriptor, validates the socket family/type/listening state and allowed filesystem namespace, and never creates a listening TCP endpoint or touches SQLite.
 - These are source examples, not a deployment or endorsement of the parent directory's actual ownership/ACL. Before VM testing, verify the `/run/universalddns` parent directory is traversable by authorized operators but not writable by them, and that symlinks, socket replacements, unexpected socket paths, service privilege, and unit lifecycle cannot undermine access checks.
 - Unit activation and shutdown cleanup are **not yet integration-verified**. The test coverage exercises inheritance refusal and path validation, not a real systemd-run session. Do not remove existing operator database ACLs.
+
+
+## Disposable systemd integration admission gate (not a deployment)
+
+Before conducting an actual broker systemd test, create a **new** Ubuntu 24.04
+VM whose short hostname begins with `uddns-broker-test-`. Do not reuse
+`uddns-prealpha` or `uddns-restore-test`. Provision a plain root-owned,
+mode-0644 file named `/etc/universalddns-broker-disposable-test` containing
+exactly `UNIVERSALDDNS_DISPOSABLE_BROKER_TEST_V1`, and run:
+
+```bash
+bash tests/deployment/check-operator-broker-preflight.sh --preflight
+```
+
+This opt-in **read-only admission check** refuses unexpected VM names, missing
+systemd/virtualization, existing operator sockets/units and root execution.
+It never installs, enables, starts, stops, or removes services. Passing it does
+**not** establish working systemd activation, runtime privileges, cleanup, or
+suitability for SQLite ACL migration. Separate scripted integration tests must
+prove those behaviors before any deployment beyond the disposable guest.
