@@ -4,7 +4,7 @@
 
 ## 0. Candidate and repository state
 - [ ] Confirm feature PRs merged and no unreviewed release blockers remain.
-- [ ] Align `pyproject.toml` and FastAPI metadata with v0.4.0a1; never re-use a published tag.
+- [x] Align `pyproject.toml` and FastAPI metadata with v0.4.0a1 in the candidate branch; verify the final merged SHA before tagging.
 - [ ] Review `CHANGELOG.md`, [draft release notes](../releases/v0.4.0a1-draft.md), README and operator/API guides.
 - [ ] Freeze a candidate commit SHA and independently review its diff and dependencies.
 
@@ -18,10 +18,10 @@
 ## 2. Disposable Ubuntu VM validation
 - [ ] Preserve an independent powered-off VM disk backup/snapshot, plus protected SQLite backup; record VM disk and checkout revisions.
 - [ ] On actual `uddns-prealpha` guest, validate hostname, isolation, active default libvirt network and loopback API binding.
-- [ ] Run guarded `update-vm.sh` upgrade and read-only `--verify`; confirm API and worker startup and backup location.
-- [ ] Run static record `vm-test.sh update` against isolated `home.lab.invalid` and verify authoritative BIND output.
+- [x] Run guarded `update-vm.sh` upgrade and read-only `--verify`; user-provided output confirmed API/worker/named active at `a15dadf8` with backup `/var/lib/universalddns/upgrade-backup-20261016T085637Z`.
+- [x] Run static record `vm-test.sh update` against isolated `home.lab.invalid` and verify authoritative BIND output; user-provided output 2026-10-16: PASS (earlier deployed revision).
 - [ ] Run `vm-test.sh tsig-deny` against prohibited names.
-- [ ] With an authorized **non-root** local operator, test catalog create, activate, issue, discover, submit, deactivate, blocker listing, revoke by reference, and safe reactivation against the isolated test zone (separate validation from the static VM update test).
+- [x] With authorized non-root Ubuntu operator, test isolated CLI create/activate/issue/block/revoke/reactivate/audit and live installed-service catalog create/activate/issue/discover/submit/publish/deactivate/revoke. User-provided logs 2026-10-16: PASS; live name `catalog-live.lab.invalid.` published `192.0.2.73` on `a15dadf8`. Safe reactivation verified in separate isolated CLI fixture, not live service.
 - [ ] Confirm no stale token grants unrelated-record access, no accidental reactivation grant, and queued work is rejected after authorization loss; recognize in-flight write limitations.
 - [ ] Inspect local credential history; confirm verified operator identity, no bearer/digest disclosure and durable audit after restart.
 - [ ] Preserve sanitized validation output; test rollback/restore in disposable snapshot only when explicitly planned.
@@ -44,9 +44,18 @@
 
 ## Known blockers/limitations
 
-- No complete verified installed-VM exercise of catalog lifecycle and operator-group credential administration has yet been recorded.
+- Operator-group CLI fixture and live catalog-to-BIND tests **passed on the disposable VM** on 2026-10-16 using commit `a15dadf8`; live test left an inactive catalog fixture and DNS RRset. Reboot, negative TSIG policy, full crash recovery and rollback still need review as independently scoped gates.
 - Actual in-flight network interruption and strong DNS-write fencing remain unproven.
-- Published v0.3.0a1 is the last documented release; development version metadata still reads `0.3.0a1`.
+- Published v0.3.0a1 remains the last documented release; candidate-branch version metadata is being moved to `0.4.0a1`, not yet tagged.
 - No approval has been granted for a v0.4 release.
 
 Evidence links and disposition should be added next to each checkbox before declaring the release ready.
+
+## 2026-10-16 user-provided VM evidence
+
+- The `uddns-prealpha` test VM upgraded and verified successfully at `a15dadf8`; API, worker and named services were active, API loopback checks passed, and a SQLite upgrade backup was retained.
+- The verified `ubuntu` account belongs to `universalddns-operators`. Following PR #40, read-only operator preflight passed with TSIG file restricted to the service account.
+- Isolated operator CLI lifecycle completed `PASS: isolated operator CLI issue, block, revoke, reactivate and audit`.
+- BIND policy was explicitly extended for only `catalog-live.lab.invalid.` A; pretest authoritative NXDOMAIN confirmed.
+- Live installed test reported `PASS: active catalog -> scoped REST -> worker -> authoritative BIND A`, followed by confirmed deactivation and temporary credential revocation. It left an inactive catalog row and published DNS RRset by design.
+- **Unverified:** independent powered-off VM snapshot evidence, explicit negative TSIG-policy test, later removal of the catalog-only policy grant, ACL rollback/production permission hardening, final candidate tests and artifact inspection. These items remain unchecked until evidenced.
