@@ -22,6 +22,10 @@ def validate_endpoint_filesystem() -> None:
         raise RuntimeError("operator socket parent must be a root-owned directory")
     if parent.st_mode & 0o022:
         raise RuntimeError("operator socket parent must not be group/other writable")
+    # systemd creates the parent root-owned; others need search permission
+    # to reach a group-restricted socket without listing its directory.
+    if not parent.st_mode & stat.S_IXOTH:
+        raise RuntimeError("operator socket parent is not traversable")
     endpoint = os.lstat(OPERATOR_SOCKET_PATH)
     if not stat.S_ISSOCK(endpoint.st_mode):
         raise RuntimeError("operator endpoint must be a filesystem socket")

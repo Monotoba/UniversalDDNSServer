@@ -96,8 +96,12 @@ class BrokerFilesystemTests(unittest.TestCase):
                              "/run/universalddns/operator.sock")
 
     def test_expected_root_directory_and_group_socket(self):
-        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o711),
                     self.fake_stat(stat.S_IFSOCK | 0o660))
+
+    def test_root_owned_directory_without_operator_traversal_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+                    None, "not traversable")
 
     def test_non_root_parent_denied(self):
         self.verify(self.fake_stat(stat.S_IFDIR | 0o750, uid=1000),
@@ -116,11 +120,11 @@ class BrokerFilesystemTests(unittest.TestCase):
                     None, "root-owned directory")
 
     def test_endpoint_symlink_denied(self):
-        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o711),
                     self.fake_stat(stat.S_IFLNK | 0o777), "filesystem socket")
 
     def test_world_accessible_socket_denied(self):
-        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o711),
                     self.fake_stat(stat.S_IFSOCK | 0o666), "too broad")
 
     def test_missing_endpoint_denied(self):
