@@ -1,10 +1,12 @@
 """Standalone read-only staged record inventory; not wired to broker or CLI."""
 import os
 import sqlite3
+import time
 from pathlib import Path
 from urllib.parse import quote
 
 MAX_RECORDS = 1_000_000_000
+QUERY_DEADLINE_SECONDS = 1.0
 
 
 def read_record_inventory(path: str | Path) -> dict[str, int]:
@@ -15,10 +17,14 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
     """
     db_path = os.path.abspath(os.fspath(path))
     uri = "file:" + quote(db_path, safe="/") + "?mode=ro&immutable=0"
+    deadline = time.monotonic() + QUERY_DEADLINE_SECONDS
     try:
         with sqlite3.connect(uri, uri=True, timeout=0.2) as db:
+            db.set_progress_handler(lambda: int(time.monotonic() >= deadline), 100)
             db.execute("PRAGMA query_only=ON")
             db.execute("PRAGMA busy_timeout=200")
+            if time.monotonic() >= deadline:
+                raise ValueError("inventory unavailable")
             columns = db.execute("PRAGMA table_info(managed_records)").fetchall()
             names = {row[1] for row in columns}
             expected = {
@@ -27,6 +33,8 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
             }
             if not expected.issubset(names):
                 raise ValueError("inventory unavailable")
+            if time.monotonic() >= deadline:
+                raise ValueError("inventory unavailable")
             row = db.execute(
                 "SELECT COUNT(*), "
                 "COALESCE(SUM(CASE WHEN active=1 THEN 1 ELSE 0 END),0), "
@@ -34,6 +42,8 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
                 "FROM managed_records"
             ).fetchone()
             if row is None:
+                raise ValueError("inventory unavailable")
+            if time.monotonic() >= deadline:
                 raise ValueError("inventory unavailable")
             total, active, inactive = row
             if any(type(n) is not int or not 0 <= n <= MAX_RECORDS
