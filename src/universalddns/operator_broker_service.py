@@ -25,7 +25,7 @@ def validate_endpoint_filesystem() -> None:
     endpoint = os.lstat(OPERATOR_SOCKET_PATH)
     if not stat.S_ISSOCK(endpoint.st_mode):
         raise RuntimeError("operator endpoint must be a filesystem socket")
-    if endpoint.st_mode & 0o007 or endpoint.st_mode & 0o020:
+    if endpoint.st_mode & 0o007:
         raise RuntimeError("operator endpoint permissions are too broad")
 
 
