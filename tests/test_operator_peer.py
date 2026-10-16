@@ -1,8 +1,9 @@
 """Peer authentication must be derived from the kernel, never JSON parameters."""
 import socket
+import struct
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from universalddns.operator_peer import authenticated_operator_peer
 
@@ -45,6 +46,49 @@ class OperatorPeerTests(unittest.TestCase):
         finally:
             first.close()
             second.close()
+
+
+    def test_reject_kernel_root_and_invalid_credentials(self):
+        for pid, uid, gid in ((123, 0, 100), (0, 1000, 100),
+                              (-1, 1000, 100), (123, -1, 100),
+                              (123, 1000, -1)):
+            with self.subTest(pid=pid, uid=uid, gid=gid):
+                conn = Mock()
+                conn.family = socket.AF_UNIX
+                conn.getsockopt.return_value = struct.pack("3i", pid, uid, gid)
+                with patch("universalddns.operator_peer.pwd.getpwuid") as lookup:
+                    with self.assertRaisesRegex(PermissionError, "privileged or unidentified"):
+                        authenticated_operator_peer(conn)
+                    lookup.assert_not_called()
+
+    def test_missing_identity_and_group_fail_closed(self):
+        for missing in ("user", "group"):
+            with self.subTest(missing=missing):
+                conn = Mock()
+                conn.family = socket.AF_UNIX
+                conn.getsockopt.return_value = struct.pack("3i", 123, 1000, 100)
+                with patch("universalddns.operator_peer.pwd.getpwuid",
+                           side_effect=KeyError if missing == "user" else None,
+                           return_value=None if missing == "user" else
+                           type("User", (), {"pw_name": "operator", "pw_gid": 100})()), \
+                     patch("universalddns.operator_peer.grp.getgrnam",
+                           side_effect=KeyError if missing == "group" else None,
+                           return_value=type("Group", (), {"gr_gid": 987})()):
+                    with self.assertRaisesRegex(PermissionError, "unavailable"):
+                        authenticated_operator_peer(conn)
+
+    def test_kernel_identity_must_belong_to_operator_group(self):
+        conn = Mock()
+        conn.family = socket.AF_UNIX
+        conn.getsockopt.return_value = struct.pack("3i", 123, 1000, 100)
+        with patch("universalddns.operator_peer.pwd.getpwuid",
+                   return_value=type("User", (), {"pw_name": "operator", "pw_gid": 100})()), \
+             patch("universalddns.operator_peer.grp.getgrnam",
+                   return_value=type("Group", (), {"gr_gid": 987})()), \
+             patch("universalddns.operator_peer.os.getgrouplist",
+                   return_value=[100]):
+            with self.assertRaisesRegex(PermissionError, "not an authorized"):
+                authenticated_operator_peer(conn)
 
     def test_reject_tcp_socket(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as conn:
