@@ -26,6 +26,7 @@ def main():
     args = parser.parse_args()
     settings = load_settings(args.config)
     if args.operation == "issue":
+        operator = local_operator_identity()
         # Initialize missing legacy catalog/token tables without activation.
         with RecordCatalog(settings.database):
             pass
@@ -38,7 +39,7 @@ def main():
         if not set(args.record).issubset(available):
             parser.error("unknown or inactive record identifier")
         with TokenStore(settings.database) as store:
-            token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record))
+            token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record), operator=operator)
         print(token)
     elif args.operation == "revoke-reference":
         operator = local_operator_identity()
@@ -58,8 +59,9 @@ def main():
         token = sys.stdin.readline().rstrip("\r\n")
         if not token:
             parser.error("token required on stdin")
+        operator = local_operator_identity()
         with TokenStore(settings.database) as store:
-            if not store.revoke(token):
+            if not store.revoke(token, operator=operator):
                 parser.error("token not found or already revoked")
         print("revoked")
 
