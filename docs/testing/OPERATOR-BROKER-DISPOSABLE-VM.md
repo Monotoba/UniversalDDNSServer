@@ -173,3 +173,17 @@ connections remain in the kernel listen backlog rather than an unbounded
 application queue. The per-request deadlines, Linux peer authentication,
 and payload-free audit events remain unchanged. This change requires a
 separate live acceptance run on the disposable guest before promotion.
+
+
+### Live four-worker guest verification — 2026-10-16
+
+Operator-provided results on `uddns-broker-test-01` after deploying commit
+`0f35d365b84566e43ba5098b8f265b9a17247908` showed that four
+incomplete requests were accepted and a fifth authenticated ping completed
+in **2.00 seconds**, compared with **8.01 seconds** for the earlier
+sequential implementation (approximately **75% lower latency** in this
+specific test). Baseline, concurrent and recovery pings all passed. The
+service remained active; `MemoryCurrent=6565888` bytes,
+`TasksCurrent=5`, `MemoryMax=134217728` and `TasksMax=16` were observed.
+This does not establish performance under sustained flooding, queue
+saturation across many client processes, or resource-limit exhaustion.
