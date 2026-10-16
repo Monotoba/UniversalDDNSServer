@@ -8,6 +8,8 @@ SocketUser=universalddns
 SocketGroup=universalddns-operators
 SocketMode=0660
 DirectoryMode=0711
+# Bound kernel pending connection queue independently of worker count.
+Backlog=16
 FileDescriptorName=operator
 Service=universalddns-operator.service
 RemoveOnStop=yes
