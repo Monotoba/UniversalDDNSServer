@@ -3,9 +3,13 @@
 Description=UniversalDDNSServer experimental operator peer broker
 Requires=universalddns-operator.socket
 After=universalddns-operator.socket
+# Fail closed on repeated start failures; socket activation remains on demand.
+StartLimitIntervalSec=10s
+StartLimitBurst=5
 
 [Service]
 Type=simple
+Restart=no
 User=universalddns
 Group=universalddns
 ExecStart=/opt/universalddns/venv/bin/python -m universalddns.operator_broker_service
