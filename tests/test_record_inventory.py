@@ -73,7 +73,8 @@ class RecordInventoryTests(unittest.TestCase):
                            ("third", "example.test", "third", "A", 300, "[]", 1, 1))
             writer.commit()
             before = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
-            with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):\n                read_record_inventory(self.path)
+            with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):
+                read_record_inventory(self.path)
             after = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
             self.assertEqual(after, before)
         finally:
