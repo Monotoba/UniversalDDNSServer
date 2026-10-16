@@ -1,4 +1,4 @@
-"""Opt-in, ping-only systemd socket-activated broker.
+"""Opt-in, read-only systemd socket-activated broker.
 
 Requires exactly one AF_UNIX SOCK_STREAM fd passed by systemd. This module does
 not bind filesystem paths, touch SQLite, or access TSIG keys.

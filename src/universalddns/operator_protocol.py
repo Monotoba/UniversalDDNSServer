@@ -37,7 +37,8 @@ def read_request(connection: socket.socket) -> dict[str, object]:
         or set(request) != {"version", "operation"}
         or type(request["version"]) is not int
         or request["version"] != PROTOCOL_VERSION
-        or request["operation"] != "ping"
+        or type(request["operation"]) is not str
+        or request["operation"] not in ("ping", "capabilities")
     ):
         raise ValueError("unsupported operation or protocol")
     return request

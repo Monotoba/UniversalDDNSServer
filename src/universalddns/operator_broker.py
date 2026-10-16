@@ -19,8 +19,13 @@ def handle_connection(connection: socket.socket) -> None:
         audit("operator_peer_rejected")
         return
     try:
-        read_request(connection)
-        send_response(connection, {"ok": True, "version": 1, "operator": operator})
+        request = read_request(connection)
+        if request["operation"] == "capabilities":
+            response = {"ok": True, "version": 1,
+                        "operations": ["ping", "capabilities"]}
+        else:
+            response = {"ok": True, "version": 1, "operator": operator}
+        send_response(connection, response)
     except (ValueError, OSError, TimeoutError):
         audit("operator_request_rejected", operator=operator)
         try:
@@ -28,4 +33,5 @@ def handle_connection(connection: socket.socket) -> None:
         except OSError:
             pass
     else:
-        audit("operator_ping_succeeded", operator=operator)
+        audit("operator_capabilities_succeeded" if request["operation"] == "capabilities"
+              else "operator_ping_succeeded", operator=operator)
