@@ -2,13 +2,13 @@
 
 All notable changes are recorded here. Published alpha versions are experimental; no stable release has been published.
 
-## [Unreleased] — v0.4.0a1 development candidate
+## [0.4.0a1] — 2026-10-16 (published experimental prerelease)
 
 - Catalog-managed A/AAAA templates with revision-controlled staging and scoped REST discovery/publication requests.
 - Explicit active-record token provisioning, dormant grant isolation, and revocation-gated reactivation.
 - Local credential blocker inventory, nonsecret reference-based revocation and complete credential metadata inventory.
 - Transactional SQLite credential event history and verified local operator attribution for credential CLI issuance and revocation.
-- Updated operator, API and test-VM documentation. No v0.4.0a1 tag or release artifacts published; see [draft release notes](docs/releases/v0.4.0a1-draft.md) and [release checklist](docs/operations/V0_4_ALPHA_RELEASE_CHECKLIST.md).
+- Updated operator, API and test-VM documentation. Published from approved commit `592153ed` with wheel, source distribution and `SHA256SUMS`; see [draft release notes](docs/releases/v0.4.0a1-draft.md) and [release checklist](docs/operations/V0_4_ALPHA_RELEASE_CHECKLIST.md).
 
 ## [0.3.0a1] — 2026-10-14 (published prerelease)
 
