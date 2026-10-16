@@ -12,7 +12,6 @@ class OperatorPeerTests(unittest.TestCase):
     def test_real_local_peer_identity_is_kernel_derived(self):
         import os
         import pwd
-        import grp
 
         first, second = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
