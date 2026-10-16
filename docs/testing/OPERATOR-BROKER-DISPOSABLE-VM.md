@@ -90,3 +90,46 @@ socket-triggered service activation, confirm authorized `ping`, deny
 unauthorized and root identities, exercise restart/failure recovery, and
 verify shutdown cleanup. Keep the original direct SQLite ACLs and CLI
 until all the security gates in ADR-0003 have been met.
+
+## 5. Observed live-guest results — 2026-10-16
+
+The following results were observed from **operator-provided terminal output**
+on newly created `uddns-broker-test-01` (Ubuntu 24.04.5 LTS, KVM,
+`192.168.122.20`). They are *manual acceptance evidence*, **not** CI
+or a reproducible automated full-service test. The guest checked out
+`585c63ee17876dee303c4066405c94bdef5b1b87` at test time.
+
+| Check | Observed outcome |
+| --- | --- |
+| Guest identity, KVM, systemd running | Pass |
+| Disposable admission preflight | Pass |
+| Socket unit creation, 0660 mode, secure directory | Pass |
+| Socket stop, RemoveOnStop and initial cleanup | Pass |
+| Initial activated service with editable install | **Fail**: `ModuleNotFoundError: No module named 'universalddns'` |
+| Non-editable package install and import as service user | Pass |
+| Authenticated ping as `broker-test-operator` | Pass: protocol version 1, correct kernel identity |
+| Socket access by `ubuntu` (nonmember) | Denied by filesystem permissions |
+| Root peer ping | Rejected without response |
+| Controlled service restart and subsequent ping | Pass |
+| Final unit stop, removal, daemon-reload and socket absence | Pass |
+
+The initial failure was due to installing the Python project **editable**
+under `/home/ubuntu`: the systemd service's `ProtectHome=yes` hid the
+source directory. Replacing it with a regular `pip install .` under the
+service venv resolved the import failure. PR #75 updated this runbook.
+
+The final manual cleanup removed the test service/socket units and confirmed
+`LoadState=not-found` and absence of the socket path. The disposable VM,
+service environment, test accounts and journals were retained. Subsequent
+`systemctl reset-failed` reported unloaded units; this was nonfatal after
+removal.
+
+### Not established by this run
+
+An unexpected service crash and **automatic** recovery, durable/authenticated
+audit events, service resource limits, abusive concurrency/flood behavior,
+complete broker mutation authorization and CLI migration were **not tested**.
+The broker remains ping-only. No production rollout, SQLite ACL transition,
+or new release is authorized on this evidence. Before promoting the broker,
+add reproducible guest checks (including audit and failure cases) and verify
+the ADR-0003 security gates.
