@@ -8,6 +8,7 @@ import selectors
 import socket
 import stat
 import sys
+from threading import Event
 
 from .operator_broker import handle_connection
 
@@ -64,13 +65,18 @@ def inherited_listener() -> socket.socket:
         raise
 
 
-def serve(listener: socket.socket) -> None:
-    """Sequential bounded handler; shutdown follows SIGTERM via default action."""
+def serve(listener: socket.socket, stop_event: Event | None = None) -> None:
+    """Sequential handler; optional stop event supports isolated lifecycle tests."""
     with selectors.DefaultSelector() as selector:
         listener.setblocking(False)
         selector.register(listener, selectors.EVENT_READ)
         while True:
-            selector.select()
+            if not selector.select(timeout=0.1 if stop_event is not None else None):
+                if stop_event is not None and stop_event.is_set():
+                    break
+                continue
+            if stop_event is not None and stop_event.is_set():
+                break
             try:
                 connection, _ = listener.accept()
             except BlockingIOError:
