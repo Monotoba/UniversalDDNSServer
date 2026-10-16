@@ -39,14 +39,15 @@ class TokenStore:
     def list_metadata(self) -> tuple[dict[str, object], ...]:
         """Local credential inventory; never expose digests or bearer tokens."""
         rows = self.db.execute(
-            "SELECT principal,scopes,records,revoked FROM api_tokens ORDER BY principal, rowid"
+            "SELECT rowid,principal,scopes,records,revoked FROM api_tokens ORDER BY principal, rowid"
         ).fetchall()
         return tuple({
+            "reference": f"cred-{rowid}",
             "principal": principal,
             "scopes": sorted(json.loads(scopes)),
             "records": sorted(json.loads(records)),
             "revoked": bool(revoked),
-        } for principal, scopes, records, revoked in rows)
+        } for rowid, principal, scopes, records, revoked in rows)
 
     def blocking_grants(self, record_id: str) -> tuple[dict[str, object], ...]:
         """List active credential metadata that blocks catalog reactivation.
