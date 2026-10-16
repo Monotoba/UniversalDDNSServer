@@ -21,6 +21,9 @@ class TokenStore:
             principal TEXT NOT NULL,
             recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(credential_audit)")}
+        if "operator" not in columns:
+            self.db.execute("ALTER TABLE credential_audit ADD COLUMN operator TEXT")
         self.db.commit()
 
     def issue(self, principal: str, scopes: frozenset[str], records: frozenset[str]) -> str:
@@ -87,13 +90,15 @@ class TokenStore:
         } for rowid, principal, scopes, records in rows
             if record_id in json.loads(records))
 
-    def revoke_reference(self, reference: str) -> bool:
+    def revoke_reference(self, reference: str, *, operator: str | None = None) -> bool:
         """Revoke by exact local credential reference, without the bearer."""
         if not isinstance(reference, str) or not reference.startswith("cred-"):
             raise ValueError("invalid credential reference")
         identifier = reference[5:]
         if not identifier.isascii() or not identifier.isdecimal() or not 1 <= len(identifier) <= 18 or int(identifier) < 1:
             raise ValueError("invalid credential reference")
+        if operator is not None and (not isinstance(operator, str) or not operator or len(operator) > 128):
+            raise ValueError("invalid operator attribution")
         with self.db:
             row = self.db.execute(
                 "SELECT principal FROM api_tokens WHERE rowid=? AND revoked=0",
@@ -103,8 +108,8 @@ class TokenStore:
             self.db.execute(
                 "UPDATE api_tokens SET revoked=1 WHERE rowid=?", (int(identifier),))
             self.db.execute(
-                "INSERT INTO credential_audit(action,credential_reference,principal) "
-                "VALUES ('revoked',?,?)", (reference, row[0]))
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('revoked',?,?,?)", (reference, row[0], operator))
             return True
 
     def audit_history(self, *, limit: int = 100) -> tuple[dict[str, object], ...]:
@@ -112,14 +117,14 @@ class TokenStore:
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("invalid history limit")
         rows = self.db.execute(
-            "SELECT event_id,action,credential_reference,principal,recorded_at "
+            "SELECT event_id,action,credential_reference,principal,recorded_at,operator "
             "FROM credential_audit ORDER BY event_id DESC LIMIT ?", (limit,)
         ).fetchall()
         return tuple({
             "event_id": event_id, "action": action,
             "reference": reference, "principal": principal,
-            "recorded_at": recorded_at,
-        } for event_id, action, reference, principal, recorded_at in rows)
+            "recorded_at": recorded_at, "operator": operator,
+        } for event_id, action, reference, principal, recorded_at, operator in rows)
 
     def close(self):
         self.db.close()
