@@ -55,8 +55,10 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "snapshot unavailable"):
             publish_inventory_snapshot(self.source.parent / "missing.sqlite3", self.target)
         self.assertFalse(self.target.exists())
+        public = self.source.parent / "public"
+        public.mkdir(mode=0o755)
         with self.assertRaisesRegex(ValueError, "snapshot unavailable"):
-            publish_inventory_snapshot(self.source, self.source.parent / "public.sqlite3")
+            publish_inventory_snapshot(self.source, public / "inventory.sqlite3")
 
     def test_symlink_destination_refused(self):
         self.target.symlink_to(self.source)
