@@ -2,7 +2,7 @@
 import json
 import socket
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from universalddns.operator_broker import handle_connection
 from universalddns.operator_protocol import read_request, send_response
@@ -48,6 +48,8 @@ class OperatorProtocolTests(unittest.TestCase):
 
     def test_authenticated_broker_ping(self):
         a, b = socket.socketpair()
+        a.settimeout(3.0)
+        b.settimeout(3.0)
         try:
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        return_value="test-operator"):
@@ -72,6 +74,20 @@ class OperatorProtocolTests(unittest.TestCase):
         finally:
             a.close()
             b.close()
+
+    def test_response_write_is_bounded_even_without_prior_read(self):
+        conn = Mock()
+        send_response(conn, {"ok": True})
+        conn.settimeout.assert_called_once_with(2.0)
+        conn.sendall.assert_called_once()
+        self.assertTrue(conn.sendall.call_args.args[0].endswith(bytes((10,))))
+
+    def test_response_timeout_propagates(self):
+        conn = Mock()
+        conn.sendall.side_effect = TimeoutError("client not reading")
+        with self.assertRaises(TimeoutError):
+            send_response(conn, {"ok": True})
+        conn.settimeout.assert_called_once_with(2.0)
 
     def test_response_limit(self):
         a, b = socket.socketpair()
