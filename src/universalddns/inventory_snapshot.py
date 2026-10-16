@@ -50,7 +50,11 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
         lock_fd = os.open(".inventory-publish.lock",
                           os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600,
                           dir_fd=directory_fd)
-        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+        lock_info = os.fstat(lock_fd)
+        if (not stat.S_ISREG(lock_info.st_mode)
+                or stat.S_IMODE(lock_info.st_mode) != 0o600
+                or lock_info.st_uid != os.geteuid()
+                or lock_info.st_nlink != 1):
             raise ValueError("snapshot unavailable")
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -93,7 +97,10 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
         raise ValueError("snapshot unavailable") from exc
     finally:
         if 'temp' in locals():
-            temp.unlink(missing_ok=True)
+            try:
+                os.unlink(temp.name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
         if lock_fd is not None:
             os.close(lock_fd)
         os.close(directory_fd)

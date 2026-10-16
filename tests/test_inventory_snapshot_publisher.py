@@ -113,6 +113,38 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
                              p.name != ".inventory-publish.lock"
                              for p in self.private.iterdir()))
 
+    def test_insecure_lock_permissions_refused(self):
+        lock = self.private / ".inventory-publish.lock"
+        lock.write_bytes(b"")
+        lock.chmod(0o666)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            publish_inventory_snapshot(self.source, self.target)
+        self.assertFalse(self.target.exists())
+
+    def test_hardlinked_lock_refused(self):
+        lock = self.private / ".inventory-publish.lock"
+        lock.write_bytes(b"")
+        os.link(lock, self.private / "second-link")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            publish_inventory_snapshot(self.source, self.target)
+
+    def test_cleanup_uses_pinned_directory_after_rename(self):
+        moved = self.private.parent / "private-renamed"
+
+        def disrupt(*args, **kwargs):
+            self.private.rename(moved)
+            self.private.mkdir(mode=0o700)
+            raise ValueError("injected crash")
+
+        with patch("universalddns.inventory_snapshot.read_record_inventory",
+                   side_effect=disrupt):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertFalse(any(p.name.startswith(".inventory-") and
+                             p.name != ".inventory-publish.lock"
+                             for p in moved.iterdir()))
+        self.assertEqual(list(self.private.iterdir()), [])
+
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
         now = self.target.stat().st_mtime
