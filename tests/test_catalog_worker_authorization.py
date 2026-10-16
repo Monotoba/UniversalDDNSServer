@@ -23,21 +23,26 @@ class CatalogWorkerAuthorizationTests(unittest.TestCase):
             settings = SimpleNamespace(database=db, records={"legacy": static})
             with RecordCatalog(db) as catalog:
                 catalog.create("dynamic", managed)
-            with TokenStore(db) as tokens:
-                token = tokens.issue("alice", frozenset({"records:write"}),
-                                     frozenset({"dynamic"}))
+            with TokenStore(db):
+                pass  # Initialize credential schema before a policy snapshot.
             policy = Policy.for_settings(settings)
             self.assertFalse(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
                 catalog.set_active("dynamic", expected_revision=1, active=True)
+            with TokenStore(db) as tokens:
+                token = tokens.issue("alice", frozenset({"records:write"}),
+                                     frozenset({"dynamic"}))
             self.assertTrue(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
                 catalog.set_active("dynamic", expected_revision=2, active=False)
             self.assertFalse(policy.may_update("alice", new_value))
             with RecordCatalog(db) as catalog:
-                catalog.set_active("dynamic", expected_revision=3, active=True)
+                with self.assertRaisesRegex(ValueError, "revoke existing"):
+                    catalog.set_active("dynamic", expected_revision=3, active=True)
             with TokenStore(db) as tokens:
                 tokens.revoke(token)
+            with RecordCatalog(db) as catalog:
+                catalog.set_active("dynamic", expected_revision=3, active=True)
             self.assertFalse(policy.may_update("alice", new_value))
 
     def test_changed_record_key_revokes_old_authorization(self):
