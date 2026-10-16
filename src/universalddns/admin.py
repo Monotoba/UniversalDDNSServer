@@ -1,7 +1,7 @@
 """Local-only credential provisioning tool. Do not expose through HTTP."""
 import argparse
 import json
-from .runtime import load_settings
+from .runtime import load_admin_settings
 from .token_store import TokenStore
 from .record_catalog import RecordCatalog
 from .record_snapshot import catalog_snapshot
@@ -24,7 +24,7 @@ def main():
     revoke = sub.add_parser("revoke")
     revoke.add_argument("--token-stdin", action="store_true", required=True)
     args = parser.parse_args()
-    settings = load_settings(args.config)
+    settings = load_admin_settings(args.config)
     if args.operation == "issue":
         operator = local_operator_identity()
         # Initialize missing legacy catalog/token tables without activation.
