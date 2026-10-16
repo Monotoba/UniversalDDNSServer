@@ -1,6 +1,6 @@
 # ADR-0003 — Privileged local administration broker (proposed)
 
-**Status:** Proposed; peer-authentication and ping-only bounded protocol prototypes implemented, not enabled. **No** new network service, socket listener, or replacement CLI is deployed.
+**Status:** Proposed; an opt-in systemd socket listener and ping-only broker service are now checked in as examples, **not installed, enabled, or tested on the lab VM**. No replacement CLI is deployed.
 
 ## Problem
 
@@ -10,7 +10,7 @@ The experimental local operator CLI needs `rwx` on the SQLite parent and `rw-` o
 
 Introduce a minimal single-host administration broker running under a dedicated, non-login identity with access to the SQLite state, not the TSIG secret. Use a Unix-domain socket under a root-managed runtime directory. Its clients need only permission to connect; human users should lose direct database write permission **after** a separately tested migration.
 
-Authenticate connecting clients from kernel `SO_PEERCRED` on Linux, then check the numeric UID against the local `universalddns-operators` group. Reject UID 0 and invalid/unrecognized peer identities. Do not trust any username, UID, or role supplied by request JSON. The `operator_peer` helper provides kernel-backed authentication; `operator_protocol` and `operator_broker` now provide a single bounded, versioned **ping-only** handler accepting no mutations. No listener, systemd unit or production admin operations are installed. The implementation is not a hardened broker.
+Authenticate connecting clients from kernel `SO_PEERCRED` on Linux, then check the numeric UID against the local `universalddns-operators` group. Reject UID 0 and invalid/unrecognized peer identities. Do not trust any username, UID, or role supplied by request JSON. The `operator_peer` helper provides kernel-backed authentication; `operator_protocol` and `operator_broker` now provide a single bounded, versioned **ping-only** handler accepting no mutations. A socket-activated listener and sample systemd socket/service unit exist in source but have not been installed or exercised on a VM; no production admin operations are implemented. The implementation is not a hardened broker.
 
 ## Required gates before enabling
 
@@ -28,3 +28,10 @@ Until the above gates pass, retain the existing direct CLI unchanged for experim
 ## Residual risks
 
 The broker's service identity can still modify SQLite audit history. Database-local audit is not tamper-evident. Full process compromise, in-flight DNS write fencing, delegated group authorization and production hardening are out of scope.
+
+## Experimental systemd units (not deployed)
+
+- `deploy/systemd/universalddns-operator.socket` provides a local `/run/universalddns/operator.sock` stream with mode `0660` and expected operator-group ownership; `deploy/systemd/universalddns-operator.service` runs a dedicated non-login account, initially only handling authenticated `ping` requests.
+- The process accepts **only** one inherited systemd socket descriptor, validates the socket family/type/listening state and allowed filesystem namespace, and never creates a listening TCP endpoint or touches SQLite.
+- These are source examples, not a deployment or endorsement of the parent directory's actual ownership/ACL. Before VM testing, verify the `/run/universalddns` parent directory is traversable by authorized operators but not writable by them, and that symlinks, socket replacements, unexpected socket paths, service privilege, and unit lifecycle cannot undermine access checks.
+- Unit activation and shutdown cleanup are **not yet integration-verified**. The test coverage exercises inheritance refusal and path validation, not a real systemd-run session. Do not remove existing operator database ACLs.
