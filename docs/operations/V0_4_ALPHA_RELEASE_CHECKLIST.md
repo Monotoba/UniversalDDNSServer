@@ -1,6 +1,6 @@
 # v0.4.0a1 experimental alpha release gate
 
-**Status: not approved, not released.** This checklist is a planning and evidence record for a possible v0.4.0a1 prerelease. It does not supersede the historical v0.1/v0.3 release records, or authorize tagging and publication.
+**Status: published experimental prerelease (2026-10-16).** This checklist records the approval, verification and evidence for v0.4.0a1. It does not establish production readiness.
 
 ## 0. Candidate and repository state
 - [ ] Confirm feature PRs merged and no unreviewed release blockers remain.
@@ -36,19 +36,19 @@
 - [ ] Confirm security boundary caveats and outstanding limitations are retained in release notes.
 
 ## 4. Publication gate
-- [ ] Explicit owner approval of release scope and final SHA.
-- [ ] Create immutable `v0.4.0a1` tag only after approval; build artifacts from tagged source.
-- [ ] Generate and independently verify `SHA256SUMS` for final wheel and sdist.
-- [ ] Publish GitHub release as **prerelease**, with tested SHA, artifact checksums, migrations and limitations.
-- [ ] Verify published tag, assets and release notes after publication.
+- [x] Owner approved v0.4.0a1 and explicitly authorized publication of `592153ed920345d282cf55c4c7995d4d9fe0e4cb`.
+- [x] Created annotated `v0.4.0a1` tag targeting exactly `592153ed920345d282cf55c4c7995d4d9fe0e4cb`; built wheel and sdist from detached approved checkout.
+- [x] Local `sha256sum -c SHA256SUMS` passed; GitHub's uploaded asset digests match the published wheel, sdist and checksum file (see publication evidence below).
+- [x] Published [v0.4.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.4.0a1) as a GitHub **prerelease**, with experimental limitations and three assets.
+- [x] Independently verified GitHub release is not draft, `prerelease=true`, all three uploaded assets have expected SHA-256 digests, and annotated tag points to approved SHA.
 - [ ] Provide host-specific local checkout / disposable VM update commands only after publication is confirmed.
 
 ## Known blockers/limitations
 
 - Operator-group CLI fixture and live catalog-to-BIND tests **passed on the disposable VM** on 2026-10-16 using commit `a15dadf8`; live test left an inactive catalog fixture and DNS RRset. Reboot, full crash recovery and rollback still need review as independently scoped gates; negative TSIG-policy test passed on 2026-10-16.
 - Actual in-flight network interruption and strong DNS-write fencing remain unproven.
-- Published v0.3.0a1 remains the last documented release; `main` metadata now reads `0.4.0a1`, not yet tagged.
-- No approval has been granted for a v0.4 release.
+- v0.4.0a1 was published on 2026-10-16; `main` package metadata reads `0.4.0a1`.
+- Owner approval and separate publication authorization were obtained for the experimental v0.4.0a1 prerelease, not production deployment.
 
 Evidence links and disposition should be added next to each checkbox before declaring the release ready.
 
@@ -95,3 +95,13 @@ Evidence links and disposition should be added next to each checkbox before decl
 - `/etc/universalddns`: operator traverse-only `--x`; `config.json`: operator `r--`; `tsig.json`: service owner `rw-`, no operator ACL, group/other `---`.
 - Uvicorn listened on `127.0.0.1:8765` only in captured socket output; operator read-only readiness passed and API, worker, named each reported `active`.
 - **Residual trust boundary:** SQLite directory and database write grants allow trusted local operators to bypass application-enforced authorization and tamper with local audit data. Do not advertise this as hardened multi-tenant administration; no permissions were modified in this review.
+
+## 2026-10-16 publication verification
+
+- Approved immutable source commit: `592153ed920345d282cf55c4c7995d4d9fe0e4cb`. All five `main` workflows passed at that SHA. Annotated tag `v0.4.0a1` points to it.
+- User built the wheel/sdist locally from a detached checkout of the approved SHA; package metadata passed, and `sha256sum -c SHA256SUMS` returned `OK` for each.
+- [GitHub prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.4.0a1) independently confirmed `prerelease=true`, `draft=false`, with all assets `uploaded`.
+- Published wheel SHA-256: `7ae25bd312f61617d29a37ebe9c5c1d41e14474a63cbe681591e675f8082a055`.
+- Published sdist SHA-256: `ecedf2127a72b39975f21178dc52d4a5d70fdbbdfb5d0a147a1554c47dae99c3`.
+- Published `SHA256SUMS` asset SHA-256: `cb40244ec4de19c43e9144ddc6d3a5fee251f67cfcbe2ce2c19ac1cd97a5935b`.
+- Build emitted setuptools' `project.license` TOML-table deprecation warning; defer SPDX metadata migration to the next development cycle. Production-grade SQLite trust isolation and in-flight fencing remain unresolved.

@@ -9,7 +9,7 @@
 
 **Experimental pre-alpha:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
 
-The **current `main` branch contains unreleased v0.4 development features**. The [v0.3.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.3.0a1) is published; see its [release notes](docs/releases/v0.3.0a1.md). Earlier [v0.2.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1) and [v0.1.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) prereleases remain available.
+The **[v0.4.0a1 experimental alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.4.0a1)** is published. The [v0.3.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.3.0a1) is published; see its [release notes](docs/releases/v0.3.0a1.md). Earlier [v0.2.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1) and [v0.1.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) prereleases remain available.
 
 ## Implemented
 - Python 3.11+ immutable validated A/AAAA resource-record-set model with order-insensitive RRset comparison.
@@ -25,9 +25,9 @@ The **current `main` branch contains unreleased v0.4 development features**. The
 
 **Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require authoritative reconciliation; unattended retries, general multi-writer guarantees, production TLS, distributed rate limiting and validated production deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
 
-## Unreleased v0.4 development features
+## v0.4 experimental alpha features
 
-These features are in the development branch, **not** in the published v0.3.0a1 wheel:
+These features are in the **published v0.4.0a1 alpha**, but **not** in the older v0.3.0a1 wheel:
 
 - SQLite catalog for operator-managed A/AAAA record templates, with revision-controlled creation, editing and staging active/inactive.
 - Scoped REST record discovery and asynchronous address updates for activated catalog records. Staging does not itself publish DNS.
