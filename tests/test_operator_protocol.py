@@ -22,10 +22,38 @@ class OperatorProtocolTests(unittest.TestCase):
         self.assertEqual(self.read(b'{"version":1,"operation":"ping"}\n'),
                          {"version": 1, "operation": "ping"})
 
+    def test_capabilities_strict_schema(self):
+        self.assertEqual(
+            self.read(b'{"version":1,"operation":"capabilities"}\n'),
+            {"version": 1, "operation": "capabilities"},
+        )
+
+    def test_authenticated_capabilities_are_static_and_read_only(self):
+        a, b = socket.socketpair()
+        a.settimeout(3.0)
+        b.settimeout(3.0)
+        try:
+            with patch("universalddns.operator_broker.authenticated_operator_peer",
+                       return_value="test-operator"), \\
+                 patch("universalddns.operator_broker.audit") as audit:
+                b.sendall(b'{"version":1,"operation":"capabilities"}\n')
+                handle_connection(a)
+                response = json.loads(b.recv(1024))
+            self.assertEqual(response, {
+                "ok": True, "version": 1,
+                "operations": ["ping", "capabilities"],
+            })
+            audit.assert_called_once_with("operator_capabilities_succeeded",
+                                          operator="test-operator")
+        finally:
+            a.close()
+            b.close()
+
     def test_reject_mutation_and_identity_override(self):
         for data in (
             b'{"version":1,"operation":"issue"}\n',
             b'{"version":1,"operation":"ping","operator":"root"}\n',
+            b'{"version":1,"operation":"capabilities","operator":"root"}\n',
             b'{"version":true,"operation":"ping"}\n',
             b'{"version":2,"operation":"ping"}\n',
             b'{"version":1,"operation":"ping"}\n{"version":1,"operation":"ping"}\n',
