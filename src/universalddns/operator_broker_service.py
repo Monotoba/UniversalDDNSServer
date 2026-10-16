@@ -11,6 +11,8 @@ import sys
 
 from .operator_broker import handle_connection
 
+OPERATOR_SOCKET_PATH = "/run/universalddns/operator.sock"
+
 
 def inherited_listener() -> socket.socket:
     """Validate systemd's exact single-fd activation contract, failing closed."""
@@ -33,7 +35,7 @@ def inherited_listener() -> socket.socket:
         if candidate.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1:
             raise RuntimeError("socket is not listening")
         path = candidate.getsockname()
-        if not isinstance(path, str) or not path.startswith("/run/universalddns/"):
+        if path != OPERATOR_SOCKET_PATH:
             raise RuntimeError("unexpected Unix socket path")
         return candidate
     except BaseException:
