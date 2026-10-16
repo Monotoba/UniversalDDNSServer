@@ -1,0 +1,24 @@
+# Experimental ping-only broker. Requires separately provisioned socket and group.
+[Unit]
+Description=UniversalDDNSServer experimental operator peer broker
+Requires=universalddns-operator.socket
+After=universalddns-operator.socket
+
+[Service]
+Type=simple
+User=universalddns
+Group=universalddns
+ExecStart=/opt/universalddns/venv/bin/python -m universalddns.operator_broker_service
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+UMask=0077
+StandardOutput=journal
+StandardError=journal
