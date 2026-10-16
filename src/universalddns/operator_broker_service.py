@@ -3,7 +3,9 @@
 Requires exactly one AF_UNIX SOCK_STREAM fd passed by systemd. This module does
 not bind filesystem paths, touch SQLite, or access TSIG keys.
 """
+import grp
 import os
+import pwd
 import selectors
 import socket
 import stat
@@ -34,6 +36,22 @@ def validate_endpoint_filesystem() -> None:
         raise RuntimeError("operator endpoint permissions are too broad")
 
 
+def validate_endpoint_ownership() -> None:
+    """Require the socket owner and group configured in the systemd socket unit."""
+    try:
+        expected_uid = pwd.getpwnam("universalddns").pw_uid
+        expected_gid = grp.getgrnam("universalddns-operators").gr_gid
+    except (KeyError, OSError) as exc:
+        raise RuntimeError("operator socket account or group unavailable") from exc
+    endpoint = os.lstat(OPERATOR_SOCKET_PATH)
+    if not stat.S_ISSOCK(endpoint.st_mode):
+        raise RuntimeError("operator endpoint must be a filesystem socket")
+    if endpoint.st_uid != expected_uid or endpoint.st_gid != expected_gid:
+        raise RuntimeError("operator socket ownership differs from systemd configuration")
+    if stat.S_IMODE(endpoint.st_mode) != 0o660:
+        raise RuntimeError("operator socket mode differs from systemd configuration")
+
+
 
 def inherited_listener() -> socket.socket:
     """Validate systemd's exact single-fd activation contract, failing closed."""
@@ -59,6 +77,7 @@ def inherited_listener() -> socket.socket:
         if path != OPERATOR_SOCKET_PATH:
             raise RuntimeError("unexpected Unix socket path")
         validate_endpoint_filesystem()
+        validate_endpoint_ownership()
         return candidate
     except BaseException:
         candidate.close()
