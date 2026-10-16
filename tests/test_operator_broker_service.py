@@ -35,27 +35,14 @@ class BrokerActivationTests(unittest.TestCase):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                 listener.bind(path)
                 listener.listen(1)
-                original = os.dup(3) if self._fd_open(3) else None
-                try:
-                    os.dup2(listener.fileno(), 3)
-                    with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
-                                                 "LISTEN_FDS": "1"}, clear=True):
+                with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
+                                             "LISTEN_FDS": "1"}, clear=True):
+                    with patch("universalddns.operator_broker_service.os.fstat",
+                               return_value=os.fstat(listener.fileno())), \
+                         patch("universalddns.operator_broker_service.socket.fromfd",
+                               return_value=listener.dup()):
                         with self.assertRaisesRegex(RuntimeError, "unexpected Unix"):
                             inherited_listener()
-                finally:
-                    if original is not None:
-                        os.dup2(original, 3)
-                        os.close(original)
-                    else:
-                        os.close(3)
-
-    @staticmethod
-    def _fd_open(fd):
-        try:
-            os.fstat(fd)
-            return True
-        except OSError:
-            return False
 
 
 if __name__ == "__main__":
