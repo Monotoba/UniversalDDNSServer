@@ -7,7 +7,9 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
-from universalddns.operator_broker_service import inherited_listener, serve, validate_endpoint_filesystem
+from universalddns.operator_broker_service import (
+    inherited_listener, serve, validate_endpoint_filesystem, validate_endpoint_ownership,
+)
 
 
 class BrokerActivationTests(unittest.TestCase):
@@ -133,6 +135,42 @@ class BrokerFilesystemTests(unittest.TestCase):
                    side_effect=FileNotFoundError):
             with self.assertRaises(FileNotFoundError):
                 validate_endpoint_filesystem()
+
+
+class BrokerOwnershipTests(unittest.TestCase):
+    @staticmethod
+    def check(uid=100, gid=200, mode=0o660, error=None):
+        record = os.stat_result((stat.S_IFSOCK | mode, 0, 0, 0,
+                                 uid, gid, 0, 0, 0, 0))
+        with patch("universalddns.operator_broker_service.pwd.getpwnam",
+                   return_value=type("User", (), {"pw_uid": 100})()), \
+             patch("universalddns.operator_broker_service.grp.getgrnam",
+                   return_value=type("Group", (), {"gr_gid": 200})()), \
+             patch("universalddns.operator_broker_service.os.lstat",
+                   return_value=record):
+            if error is None:
+                validate_endpoint_ownership()
+            else:
+                with unittest.TestCase().assertRaisesRegex(RuntimeError, error):
+                    validate_endpoint_ownership()
+
+    def test_expected_ownership(self):
+        self.check()
+
+    def test_wrong_owner_refused(self):
+        self.check(uid=101, error="ownership")
+
+    def test_wrong_group_refused(self):
+        self.check(gid=201, error="ownership")
+
+    def test_wrong_mode_refused(self):
+        self.check(mode=0o666, error="mode")
+
+    def test_missing_service_account_refused(self):
+        with patch("universalddns.operator_broker_service.pwd.getpwnam",
+                   side_effect=KeyError):
+            with self.assertRaisesRegex(RuntimeError, "account or group unavailable"):
+                validate_endpoint_ownership()
 
 
 class BrokerLifecycleTests(unittest.TestCase):
