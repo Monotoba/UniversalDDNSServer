@@ -33,6 +33,55 @@ class BrokerActivationTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "not a socket"):
                         inherited_listener()
 
+
+    def test_wrong_activation_process_refused_before_fd_access(self):
+        with patch.dict(os.environ, {"LISTEN_PID": "0", "LISTEN_FDS": "1"},
+                        clear=True):
+            with patch("universalddns.operator_broker_service.os.fstat") as fstat:
+                with self.assertRaisesRegex(RuntimeError, "not activated"):
+                    inherited_listener()
+                fstat.assert_not_called()
+
+    def test_unexpected_fd_name_refused_before_fd_access(self):
+        with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
+                                     "LISTEN_FDS": "1", "LISTEN_FDNAMES": "other"},
+                        clear=True):
+            with patch("universalddns.operator_broker_service.os.fstat") as fstat:
+                with self.assertRaisesRegex(RuntimeError, "unexpected socket name"):
+                    inherited_listener()
+                fstat.assert_not_called()
+
+    def test_non_listening_unix_socket_refused_and_duplicate_closed(self):
+        candidate = MagicMock()
+        candidate.family = socket.AF_UNIX
+        candidate.type = socket.SOCK_STREAM
+        candidate.getsockopt.return_value = 0
+        with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
+                                     "LISTEN_FDS": "1"}, clear=True):
+            with patch("universalddns.operator_broker_service.os.fstat",
+                       return_value=os.stat_result((stat.S_IFSOCK, 0, 0, 0,
+                                                    0, 0, 0, 0, 0, 0))), \
+                 patch("universalddns.operator_broker_service.socket.fromfd",
+                       return_value=candidate):
+                with self.assertRaisesRegex(RuntimeError, "not listening"):
+                    inherited_listener()
+        candidate.close.assert_called_once_with()
+
+    def test_unexpected_socket_family_refused_and_duplicate_closed(self):
+        candidate = MagicMock()
+        candidate.family = socket.AF_INET
+        candidate.type = socket.SOCK_STREAM
+        with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
+                                     "LISTEN_FDS": "1"}, clear=True):
+            with patch("universalddns.operator_broker_service.os.fstat",
+                       return_value=os.stat_result((stat.S_IFSOCK, 0, 0, 0,
+                                                    0, 0, 0, 0, 0, 0))), \
+                 patch("universalddns.operator_broker_service.socket.fromfd",
+                       return_value=candidate):
+                with self.assertRaisesRegex(RuntimeError, "AF_UNIX stream"):
+                    inherited_listener()
+        candidate.close.assert_called_once_with()
+
     def test_wrong_socket_path_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             path = directory + "/unexpected.sock"
