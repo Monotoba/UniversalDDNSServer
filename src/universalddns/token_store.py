@@ -67,6 +67,19 @@ class TokenStore:
         } for principal, scopes, records in rows
             if record_id in json.loads(records))
 
+    def revoke_reference(self, reference: str) -> bool:
+        """Revoke by exact local credential reference, without the bearer."""
+        if not isinstance(reference, str) or not reference.startswith("cred-"):
+            raise ValueError("invalid credential reference")
+        digest = reference[5:]
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ValueError("invalid credential reference")
+        with self.db:
+            return self.db.execute(
+                "UPDATE api_tokens SET revoked=1 WHERE digest=? AND revoked=0",
+                (digest,),
+            ).rowcount == 1
+
     def close(self):
         self.db.close()
 
