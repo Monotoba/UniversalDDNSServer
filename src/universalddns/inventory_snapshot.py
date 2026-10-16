@@ -94,4 +94,6 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
     finally:
         if 'temp' in locals():
             temp.unlink(missing_ok=True)
+        if lock_fd is not None:
+            os.close(lock_fd)
         os.close(directory_fd)
