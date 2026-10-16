@@ -1,6 +1,7 @@
 """Isolated SQLite snapshot producer; not wired to the broker or services."""
 import os
 import fcntl
+import hashlib
 import sqlite3
 import stat
 import tempfile
@@ -12,6 +13,15 @@ from .record_inventory import read_record_inventory
 
 SNAPSHOT_MAX_AGE_SECONDS = 300
 BACKUP_DEADLINE_SECONDS = 5.0
+
+
+def snapshot_fingerprint(path: str | Path) -> str:
+    """Content integrity fingerprint; authenticity still requires a trusted publisher."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def snapshot_is_fresh(path: str | Path, *, now: float | None = None) -> bool:
@@ -102,6 +112,9 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
                 if journal != ("delete",):
                     raise ValueError("snapshot unavailable")
         counts = read_record_inventory(temp)
+        # Compute a deterministic fingerprint for a future trusted manifest.
+        # Do not treat a bare digest or filesystem mtime as authentication.
+        snapshot_fingerprint(temp)
         with temp.open("rb") as f:
             os.fsync(f.fileno())
         # Refuse directory substitution and destination symlink races.
