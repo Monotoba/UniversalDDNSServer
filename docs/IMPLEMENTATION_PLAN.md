@@ -44,6 +44,11 @@ Phases are engineering milestones, not release dates. Status reflects reviewed r
 ## Release tracking
 - [x] v0.3.0a1 experimental prerelease documented and published.
 - [x] v0.4.0a1 package/API version alignment, CI package-build inspection, and experimental VM catalog publication evidence recorded.
-- [ ] v0.4.0a1 final release gate, owner publication approval, immutable tag and verified release assets. **Not published.**
+- [x] v0.4.0a1 experimental prerelease approved and published 2026-10-16 from commit `592153ed920345d282cf55c4c7995d4d9fe0e4cb` with annotated tag, wheel, source distribution and published SHA-256 checksums. [Release](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.4.0a1).
 
 Every functional change needs appropriate tests, docs and CI. Experimental test passes do not imply a production support claim.
+
+## Post-v0.4.0a1 packaging maintenance
+
+- [x] Migrate development-branch `pyproject.toml` from deprecated license table to PEP 639 SPDX `BSD-2-Clause` and explicit `LICENSE` inclusion, with setuptools build requirement `>=77`. This is a post-release change; the immutable v0.4.0a1 tag and its published artifacts are unchanged.
+- [ ] Verify next development build metadata and LICENSE distribution on supported Python versions; no claim that already-published v0.4.0a1 packages include this change.
