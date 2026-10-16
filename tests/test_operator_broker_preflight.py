@@ -31,6 +31,17 @@ class BrokerPreflightContractTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, content)
 
+    def test_rejects_vendor_units_masks_and_dropins(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        for path in ("/etc/systemd/system", "/run/systemd/system",
+                     "/usr/lib/systemd/system", "/lib/systemd/system"):
+            with self.subTest(path=path):
+                self.assertIn(path, script)
+        self.assertIn('! -L "$base/$unit"', script)
+        self.assertIn('! -e "$base/$unit.d"', script)
+        self.assertIn('! -L "$base/$unit.d"', script)
+        self.assertIn("broker unit drop-in already installed", script)
+
     def test_gate_has_no_deployment_commands(self):
         content = SCRIPT.read_text(encoding="utf-8")
         for forbidden in ("systemctl start", "systemctl enable", "systemctl restart",
