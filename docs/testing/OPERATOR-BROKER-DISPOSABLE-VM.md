@@ -49,10 +49,14 @@ sudo install -d -o root -g root -m 0755 /opt/universalddns
 sudo apt-get update
 sudo apt-get install -y python3-venv
 sudo python3 -m venv /opt/universalddns/venv
-sudo /opt/universalddns/venv/bin/pip install -e .
+sudo /opt/universalddns/venv/bin/python -m pip install .
+# Verify imports using the same unprivileged account as the unit.
+sudo -u universalddns /opt/universalddns/venv/bin/python -c \
+  'import universalddns.operator_broker_service'
 ```
 
-These account-creation commands are designed for a *fresh* guest; if an
+Use a **non-editable** installation: the service has `ProtectHome=yes`, so
+it cannot import an editable source tree under `/home/ubuntu`. These account-creation commands are designed for a *fresh* guest; if an
 account/group already exists, **stop and inspect** instead of suppressing
 the error. The test service runs only the ping-only Python broker; do not
 copy state databases or TSIG credentials into this guest.
