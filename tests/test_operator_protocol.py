@@ -80,7 +80,7 @@ class OperatorProtocolTests(unittest.TestCase):
         send_response(conn, {"ok": True})
         conn.settimeout.assert_called_once_with(2.0)
         conn.sendall.assert_called_once()
-        self.assertTrue(conn.sendall.call_args.args[0].endswith(b"\\n"))
+        self.assertTrue(conn.sendall.call_args.args[0].endswith(bytes((10,))))
 
     def test_response_timeout_propagates(self):
         conn = Mock()
