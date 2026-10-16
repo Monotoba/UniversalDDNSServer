@@ -7,7 +7,7 @@ from .domain import RecordSet
 from .local_operator import local_operator_identity
 from .record_catalog import RecordCatalog
 from .token_store import TokenStore
-from .runtime import load_settings
+from .runtime import load_admin_settings
 
 
 def main():
@@ -33,7 +33,7 @@ def main():
     args = parser.parse_args()
     try:
         operator = local_operator_identity()
-        settings = load_settings(args.config)
+        settings = load_admin_settings(args.config)
         with RecordCatalog(settings.database) as catalog:
             if args.operation == "list":
                 result = {"records": [
@@ -65,7 +65,7 @@ def main():
             else:
                 if args.record_id in settings.records:
                     raise ValueError("record ID is reserved by static configuration")
-                rr = RecordSet(settings.dns.zone, args.name, args.type,
+                rr = RecordSet(settings.zone, args.name, args.type,
                                args.ttl, (args.address,))
                 if any(existing.key == rr.key for existing in settings.records.values()):
                     raise ValueError("DNS RRset is reserved by static configuration")
