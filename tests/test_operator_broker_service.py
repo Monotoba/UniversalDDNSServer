@@ -1,11 +1,12 @@
 """Socket activation contract and authenticated ping handler smoke checks."""
 import os
 import socket
+import stat
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from universalddns.operator_broker_service import inherited_listener
+from universalddns.operator_broker_service import inherited_listener, validate_endpoint_filesystem
 
 
 class BrokerActivationTests(unittest.TestCase):
@@ -71,6 +72,62 @@ class BrokerActivationTests(unittest.TestCase):
                     inherited_listener()
         candidate.close.assert_called_once_with()
 
+
+
+
+class BrokerFilesystemTests(unittest.TestCase):
+    """Fail closed on an untrusted runtime directory or socket endpoint."""
+
+    @staticmethod
+    def fake_stat(mode, uid=0):
+        return os.stat_result((mode, 0, 0, 0, uid, 0, 0, 0, 0, 0))
+
+    def verify(self, parent, endpoint, expected=None):
+        with patch("universalddns.operator_broker_service.os.lstat",
+                   side_effect=[parent, endpoint]) as lstat:
+            if expected:
+                with self.assertRaisesRegex(RuntimeError, expected):
+                    validate_endpoint_filesystem()
+            else:
+                validate_endpoint_filesystem()
+        self.assertEqual(lstat.call_args_list[0].args[0], "/run/universalddns")
+        if lstat.call_count == 2:
+            self.assertEqual(lstat.call_args_list[1].args[0],
+                             "/run/universalddns/operator.sock")
+
+    def test_expected_root_directory_and_group_socket(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+                    self.fake_stat(stat.S_IFSOCK | 0o660))
+
+    def test_non_root_parent_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o750, uid=1000),
+                    None, "root-owned")
+
+    def test_world_writable_parent_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o777),
+                    None, "group/other writable")
+
+    def test_group_writable_parent_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o770),
+                    None, "group/other writable")
+
+    def test_parent_symlink_denied(self):
+        self.verify(self.fake_stat(stat.S_IFLNK | 0o777),
+                    None, "root-owned directory")
+
+    def test_endpoint_symlink_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+                    self.fake_stat(stat.S_IFLNK | 0o777), "filesystem socket")
+
+    def test_world_accessible_socket_denied(self):
+        self.verify(self.fake_stat(stat.S_IFDIR | 0o750),
+                    self.fake_stat(stat.S_IFSOCK | 0o666), "too broad")
+
+    def test_missing_endpoint_denied(self):
+        with patch("universalddns.operator_broker_service.os.lstat",
+                   side_effect=FileNotFoundError):
+            with self.assertRaises(FileNotFoundError):
+                validate_endpoint_filesystem()
 
 if __name__ == "__main__":
     unittest.main()

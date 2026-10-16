@@ -12,6 +12,22 @@ import sys
 from .operator_broker import handle_connection
 
 OPERATOR_SOCKET_PATH = "/run/universalddns/operator.sock"
+OPERATOR_SOCKET_DIRECTORY = "/run/universalddns"
+
+
+def validate_endpoint_filesystem() -> None:
+    """Reject path substitution and writable runtime-directory boundaries."""
+    parent = os.lstat(OPERATOR_SOCKET_DIRECTORY)
+    if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0:
+        raise RuntimeError("operator socket parent must be a root-owned directory")
+    if parent.st_mode & 0o022:
+        raise RuntimeError("operator socket parent must not be group/other writable")
+    endpoint = os.lstat(OPERATOR_SOCKET_PATH)
+    if not stat.S_ISSOCK(endpoint.st_mode):
+        raise RuntimeError("operator endpoint must be a filesystem socket")
+    if endpoint.st_mode & 0o007:
+        raise RuntimeError("operator endpoint permissions are too broad")
+
 
 
 def inherited_listener() -> socket.socket:
@@ -37,6 +53,7 @@ def inherited_listener() -> socket.socket:
         path = candidate.getsockname()
         if path != OPERATOR_SOCKET_PATH:
             raise RuntimeError("unexpected Unix socket path")
+        validate_endpoint_filesystem()
         return candidate
     except BaseException:
         candidate.close()
