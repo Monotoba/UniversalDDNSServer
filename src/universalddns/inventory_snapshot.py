@@ -2,6 +2,7 @@
 import os
 import fcntl
 import hashlib
+import uuid
 import sqlite3
 import stat
 import tempfile
@@ -22,6 +23,20 @@ def snapshot_fingerprint(path: str | Path) -> str:
         for chunk in iter(lambda: source.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def read_snapshot_generation(path: str | Path) -> tuple[str, int]:
+    """Read internal generation metadata; not proof of authenticity or trust."""
+    try:
+        with sqlite3.connect(f"file:{quote(os.path.abspath(os.fspath(path)), safe='/')}?mode=ro", uri=True) as db:
+            rows = db.execute("SELECT generation, created_at FROM inventory_generation").fetchall()
+        if (len(rows) != 1 or not isinstance(rows[0][0], str)
+                or len(rows[0][0]) != 32 or not isinstance(rows[0][1], int)):
+            raise ValueError("snapshot unavailable")
+        uuid.UUID(hex=rows[0][0])
+        return rows[0]
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        raise ValueError("snapshot unavailable") from exc
 
 
 def snapshot_is_fresh(path: str | Path, *, now: float | None = None) -> bool:
@@ -111,7 +126,12 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
                 journal = copy.execute("PRAGMA journal_mode=DELETE").fetchone()
                 if journal != ("delete",):
                     raise ValueError("snapshot unavailable")
+                # Metadata and records live in the SAME atomic SQLite file.
+                copy.execute("CREATE TABLE inventory_generation (generation TEXT NOT NULL, created_at INTEGER NOT NULL)")
+                copy.execute("INSERT INTO inventory_generation VALUES (?, ?)",
+                             (uuid.uuid4().hex, int(time.time())))
         counts = read_record_inventory(temp)
+        read_snapshot_generation(temp)
         # Compute a deterministic fingerprint for a future trusted manifest.
         # Do not treat a bare digest or filesystem mtime as authentication.
         snapshot_fingerprint(temp)
