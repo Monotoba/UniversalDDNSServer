@@ -1,6 +1,7 @@
 """Isolated atomic snapshot publication tests."""
 import sqlite3
 import os
+import fcntl
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,7 +41,7 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
                        ("two", "example.test", "b", "A", 300, "[]", 1, 0))
         self.assertEqual(publish_inventory_snapshot(self.source, self.target)["total_records"], 2)
         self.assertNotEqual(old_bytes, self.target.read_bytes())
-        self.assertEqual([x.name for x in self.private.iterdir()], ["inventory.sqlite3"])
+        self.assertEqual([x.name for x in self.private.iterdir()], [".inventory-publish.lock", "inventory.sqlite3"])
 
     def test_failure_retains_last_good_snapshot_and_cleans_staging(self):
         publish_inventory_snapshot(self.source, self.target)
@@ -91,6 +92,26 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 publish_inventory_snapshot(self.source, self.target)
         self.assertEqual(self.target.read_bytes(), previous)
+
+    def test_concurrent_publisher_refused(self):
+        lock = self.private / ".inventory-publish.lock"
+        descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+            self.assertFalse(self.target.exists())
+        finally:
+            os.close(descriptor)
+
+    def test_expired_backup_deadline_refused_and_staging_cleaned(self):
+        with patch("universalddns.inventory_snapshot.BACKUP_DEADLINE_SECONDS", -1.0):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertFalse(self.target.exists())
+        self.assertFalse(any(p.name.startswith(".inventory-") and
+                             p.name != ".inventory-publish.lock"
+                             for p in self.private.iterdir()))
 
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
