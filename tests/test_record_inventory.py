@@ -80,6 +80,22 @@ class RecordInventoryTests(unittest.TestCase):
         finally:
             writer.close()
 
+    def test_wal_header_without_sidecars_is_refused(self):
+        self.initialize([1])
+        with sqlite3.connect(self.path) as writer:
+            writer.execute("PRAGMA journal_mode=WAL")
+        self.assertFalse((self.path.parent / (self.path.name + "-wal")).exists())
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):
+            read_record_inventory(self.path)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual([p.name for p in self.path.parent.iterdir()], [self.path.name])
+
+    def test_non_sqlite_file_is_refused_without_sidecars(self):
+        self.path.write_bytes(b"not a SQLite file")
+        with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):
+            read_record_inventory(self.path)
+
     def test_writer_reserved_lock_does_not_block_snapshot(self):
         self.initialize([0])
         writer = sqlite3.connect(self.path, timeout=0.2)
