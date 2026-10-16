@@ -133,3 +133,25 @@ The broker remains ping-only. No production rollout, SQLite ACL transition,
 or new release is authorized on this evidence. Before promoting the broker,
 add reproducible guest checks (including audit and failure cases) and verify
 the ADR-0003 security gates.
+
+
+## 6. Subsequent live validation and resource limits
+
+Operator-provided results on 2026-10-16 also confirmed that audit-enabled
+commit `5525ff1` delivered all three events to journald:
+`operator_ping_succeeded`, `operator_request_rejected`, and
+`operator_peer_rejected`. The test secret was absent from the observed
+service journal. This does not establish persistence across reboot.
+
+An authorized request following deliberate `SIGKILL` of broker PID 3833
+caused systemd socket-triggered activation of a new broker PID 4122, and
+its ping succeeded. The service had `NRestarts=0`; this demonstrates
+recovery on a subsequent connection, **not** automatic restart without
+traffic. The guest and its installed experimental units were retained.
+
+The unit now specifies `MemoryMax=128M`, `TasksMax=16`, and
+`LimitNOFILE=256`. These are proposed conservative limits for a
+single-process, ping-only service; unit contract CI is not evidence of
+live enforcement. Verify them on the disposable VM with `systemctl show`
+and a service ping before considering rollout. No mutation operations or
+CLI/SQLite ACL migration is authorized.

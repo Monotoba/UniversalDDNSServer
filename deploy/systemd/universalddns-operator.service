@@ -20,5 +20,10 @@ RestrictAddressFamilies=AF_UNIX
 RestrictSUIDSGID=yes
 LockPersonality=yes
 UMask=0077
+# Conservative limits for the single-process, ping-only broker.
+MemoryMax=128M
+TasksMax=16
+LimitNOFILE=256
+
 StandardOutput=journal
 StandardError=journal

@@ -48,6 +48,9 @@ class OperatorSystemdContractTests(unittest.TestCase):
         self.assertEqual(settings["ProtectHome"], "yes")
         self.assertEqual(settings["RestrictSUIDSGID"], "yes")
         self.assertEqual(settings["UMask"], "0077")
+        self.assertEqual(settings["MemoryMax"], "128M")
+        self.assertEqual(settings["TasksMax"], "16")
+        self.assertEqual(settings["LimitNOFILE"], "256")
         self.assertEqual(
             settings["ExecStart"],
             "/opt/universalddns/venv/bin/python -m universalddns.operator_broker_service",
