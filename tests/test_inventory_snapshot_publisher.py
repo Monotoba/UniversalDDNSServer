@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from universalddns.inventory_snapshot import (
-    publish_inventory_snapshot, snapshot_is_fresh,
+    publish_inventory_snapshot, snapshot_is_fresh, snapshot_fingerprint,
 )
 
 
@@ -174,6 +174,24 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
             self.assertTrue(orphan.exists())
         finally:
             os.close(descriptor)
+
+    def test_fingerprint_changes_on_tampering(self):
+        publish_inventory_snapshot(self.source, self.target)
+        baseline = snapshot_fingerprint(self.target)
+        self.assertEqual(len(baseline), 64)
+        self.assertEqual(snapshot_fingerprint(self.target), baseline)
+        with self.target.open("ab") as output:
+            output.write(b"tampered")
+        self.assertNotEqual(snapshot_fingerprint(self.target), baseline)
+
+    def test_prepublication_integrity_failure_keeps_last_good(self):
+        publish_inventory_snapshot(self.source, self.target)
+        before = snapshot_fingerprint(self.target)
+        with patch("universalddns.inventory_snapshot.snapshot_fingerprint",
+                   side_effect=OSError("integrity failure")):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertEqual(snapshot_fingerprint(self.target), before)
 
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
