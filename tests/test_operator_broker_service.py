@@ -64,7 +64,7 @@ class BrokerActivationTests(unittest.TestCase):
         with patch.dict(os.environ, {"LISTEN_PID": str(os.getpid()),
                                      "LISTEN_FDS": "1"}, clear=True):
             with patch("universalddns.operator_broker_service.os.fstat",
-                       return_value=os.stat_result((0o140000, 0, 0, 0, 0, 0, 0, 0, 0, 0))), \\
+                       return_value=os.stat_result((0o140000, 0, 0, 0, 0, 0, 0, 0, 0, 0))), \
                  patch("universalddns.operator_broker_service.socket.fromfd",
                        return_value=candidate):
                 with self.assertRaisesRegex(RuntimeError, "unexpected Unix socket path"):
