@@ -24,7 +24,7 @@ def read_record_inventory(path: str | Path) -> dict[str, int]:
     try:
         with open(db_path, "rb") as source:
             header = source.read(20)
-        if header[:16] != b"SQLite format 3\\x00" or header[18:20] != b"\\x01\\x01":
+        if header[:16] != b"SQLite format 3\x00" or header[18:20] != b"\x01\x01":
             raise ValueError("inventory unavailable")
     except OSError as exc:
         raise ValueError("inventory unavailable") from exc
