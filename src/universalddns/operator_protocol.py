@@ -1,6 +1,7 @@
 """Bounded, versioned local administrative protocol; no write operations yet."""
 import json
 import socket
+import time
 
 PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 4096
@@ -10,9 +11,13 @@ SOCKET_TIMEOUT = 2.0
 
 def read_request(connection: socket.socket) -> dict[str, object]:
     """Accept exactly one newline-terminated JSON object, with a strict schema."""
-    connection.settimeout(SOCKET_TIMEOUT)
+    deadline = time.monotonic() + SOCKET_TIMEOUT
     payload = bytearray()
     while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("request deadline exceeded")
+        connection.settimeout(remaining)
         chunk = connection.recv(min(1024, MAX_REQUEST_BYTES + 1 - len(payload)))
         if not chunk:
             raise ValueError("incomplete request")
