@@ -59,6 +59,7 @@ class CatalogTokenIssuanceTests(unittest.TestCase):
                                            "lab.invalid", "home.lab.invalid",
                                            "A", 60, ("192.0.2.1",))})
             with patch("universalddns.admin.load_settings", return_value=settings), \
+                 patch("universalddns.admin.local_operator_identity", return_value="test-operator"), \
                  patch("sys.argv", ["token-admin", "--config", "/ignored",
                                     "issue", "--principal", "device",
                                     "--record", "missing",
