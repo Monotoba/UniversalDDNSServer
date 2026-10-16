@@ -28,11 +28,11 @@
 - [ ] Exercise a controlled rollback/failure scenario and restored application-level API/DNS behavior; service activation alone is insufficient.
 
 ## 3. Security and operational review
-- [ ] Review OS group and filesystem ACL permissions for configuration, TSIG secret and writable SQLite directory; do not grant world access.
+- [x] Review lab OS group and ACLs (user-provided read-only audit 2026-10-16): `ubuntu` belongs to `universalddns-operators`; state directory group ACL `rwx`, database ACL `rw-`, config ACL `r--`, TSIG account-only, no world access. **Known limitation:** directory/database write privileges permit direct SQLite changes outside application authorization/audit.
 - [ ] Verify credential CLI refuses root, changed UID and unauthorized users.
 - [x] Verify restored BIND policy authorizes only `home.lab.invalid.` A after live validation; user's 2026-10-16 command output showed `named` active and both DNS records still resolving.
 - [ ] Review credential `cred-N` reference stability caveat and SQLite audit tamper limitations.
-- [ ] Check that no external listener, public token management, production TLS claim, or automatic ambiguous write retry was added.
+- [ ] Review HTTP management exposure, external listeners and retry semantics in code. Installed VM socket check confirms Uvicorn bound only to `127.0.0.1:8765`, but this does not alone establish broader code/production behavior.
 - [ ] Confirm security boundary caveats and outstanding limitations are retained in release notes.
 
 ## 4. Publication gate
@@ -87,3 +87,11 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Restored SQLite database copy passed `PRAGMA integrity_check` (`ok`), with tables `api_tokens`, `credential_audit`, `managed_records`, `sqlite_sequence`, `update_intents`. No bearer-token contents were disclosed.
 - QEMU guest-agent channel on the booted restored VM returned successful `guest-ping`; `systemctl is-active universalddns-api universalddns-worker named` exited 0 and decoded to `active`, `active`, `active` (guest process PIDs 887 and 894). Network interface list remained empty.
 - These checks demonstrate isolated boot and basic application state/service recovery, not exercised HTTP requests, BIND DNS queries after restore, in-flight failure handling, or production recovery SLAs.
+
+## 2026-10-16 operator ACL and listener evidence
+
+- Installed `uddns-prealpha` reported non-root `ubuntu` UID 1000 in group `universalddns-operators` (GID 987), dedicated non-login service user `universalddns` UID 999.
+- `/var/lib/universalddns`: named operator group ACL `rwx`, `other::---`; `state.sqlite3`: named operator group `rw-`, `other::---`.
+- `/etc/universalddns`: operator traverse-only `--x`; `config.json`: operator `r--`; `tsig.json`: service owner `rw-`, no operator ACL, group/other `---`.
+- Uvicorn listened on `127.0.0.1:8765` only in captured socket output; operator read-only readiness passed and API, worker, named each reported `active`.
+- **Residual trust boundary:** SQLite directory and database write grants allow trusted local operators to bypass application-enforced authorization and tamper with local audit data. Do not advertise this as hardened multi-tenant administration; no permissions were modified in this review.

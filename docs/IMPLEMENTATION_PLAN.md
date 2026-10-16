@@ -29,7 +29,8 @@ Phases are engineering milestones, not release dates. Status reflects reviewed r
 - [x] Capture a powered-off VM backup after explicitly observing `virsh domstate` = `shut off`; saved VM XML, QCOW2 disk and seed ISO in `~/vm-backups/uddns-prealpha-20261016-cold/`. User verified both SHA-256 checksums, clean `qemu-img check`, file inventory and subsequent VM restart (2026-10-16).
 - [x] Boot an independent isolated restore VM from a copied cold QCOW2: Ubuntu 24.04 reached login, no network interfaces were attached, libguestfs recovered application files/systemd units, restored SQLite `PRAGMA integrity_check` returned `ok` with expected five tables, and QEMU guest agent confirmed API, worker and BIND services each `active` (2026-10-16).
 - [ ] Validate application-level request/DNS behavior inside the restored guest and exercise a controlled rollback/failure recovery; basic boot, filesystem, DB and service activation are not a production disaster-recovery guarantee.
-- [ ] Harden operator database access: test VM currently grants `universalddns-operators` write access to the service-state directory. Document and test a narrower operational permission model.
+- [x] Audit lab operator ACLs and service listening boundary (2026-10-16): non-root operator group has SQLite file `rw-` and parent `rwx`, config read only, TSIG service-only, no world access; API binds `127.0.0.1:8765`; readiness and all three services passed.
+- [ ] Harden direct operator database access for deployment beyond the disposable VM: current group write privileges allow bypass of application-level authorization and SQLite audit; design/test a privileged administrative broker or equivalent narrower model.
 - [ ] Validate full production-safe upgrade, restoration, networking, monitoring and operational security. Current VM evidence is laboratory-only.
 
 ## Phase 3 — management
