@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from .record_inventory import read_record_inventory
 
@@ -37,7 +38,7 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
     temp = Path(temp_name)
     try:
         os.chmod(temp, 0o600)
-        uri = "file:" + __import__("urllib.parse", fromlist=["quote"]).quote(
+        uri = "file:" + quote(
             os.path.abspath(os.fspath(source)), safe="/"
         ) + "?mode=ro"
         with sqlite3.connect(uri, uri=True, timeout=0.2) as live:
