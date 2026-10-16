@@ -53,7 +53,11 @@ def api(path, token, *, body=None, method="GET"):
 
 def observed():
     response = dns.query.tcp(dns.message.make_query(NAME, "A"), "127.0.0.1", timeout=5)
-    if not response.flags & dns.flags.AA or response.rcode() != dns.rcode.NOERROR:
+    if not response.flags & dns.flags.AA:
+        raise RuntimeError("DNS answer was not authoritative")
+    if response.rcode() == dns.rcode.NXDOMAIN:
+        return set()
+    if response.rcode() != dns.rcode.NOERROR:
         raise RuntimeError("authoritative DNS query failed")
     return {value.to_text() for answer in response.answer
             if answer.rdtype == dns.rdatatype.A and answer.name.to_text().lower() == NAME
