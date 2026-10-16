@@ -21,15 +21,19 @@ sudo install -m 0600 -o universalddns -g universalddns /opt/universalddns/src/de
 
 Edit `/etc/universalddns/config.json` to set the authoritative zone, server, port, records, and SQLite database location. Configure the `credentials` field to point to `/etc/universalddns/tsig.json`, and create that file as owner `universalddns` with mode `0600`. Its sole JSON property is `key_secret`, containing the TSIG secret in base64. Never commit this file. Check zone permissions and keys before running either service.
 
-To issue a scoped client token, run the local admin command as the service account, capturing stdout securely (avoid terminal session logging and shell history). The issued token is displayed **once**:
+### Credential administration on current `main` (unreleased v0.4)
+
+The v0.3.0a1 release and current `main` do **not** have identical administration requirements. On current `main`, token issuance and revocation require an authorized **non-root POSIX operator login** in the `universalddns-operators` group. The CLI verifies real/effective UID and OS group membership; running it as root or through a UID-changing `sudo -u` session fails. The operator also needs securely provisioned read access to the configuration and write access to SQLite and its containing directory. Simply creating a group does not grant filesystem access. Follow [the v0.4 local operator guide](V0_4_LOCAL_OPERATOR_UPGRADE.md) for scoped permissions, lifecycle commands, and VM upgrade steps.
+
+From an authorized operator session, after ensuring the virtualenv interpreter is accessible:
 
 ```sh
-sudo -u universalddns /opt/universalddns/venv/bin/python -m universalddns.admin \
+/opt/universalddns/venv/bin/python -m universalddns.admin \
   --config /etc/universalddns/config.json issue --principal client1 \
   --record home --scope records:write --scope intents:read
 ```
 
-To revoke a token, pipe it into the local admin command with `revoke --token-stdin`. Do not pass bearer secrets as command-line arguments. Avoid persisting plaintext tokens in scripts.
+Capture the resulting bearer token securely; it is printed **once**. Never put bearer tokens in command-line arguments, terminal logs or shared support reports. For revocation, use `revoke --token-stdin`, or inspect `admin list` and revoke by a freshly listed `cred-N` reference through `revoke-reference --reference cred-N`. Ref-based revocation removes every grant associated with that token.
 
 Install `deploy/universalddns-api.service` and `deploy/universalddns-worker.service` into `/etc/systemd/system/`, then run `systemctl daemon-reload`. For a controlled local experiment, enable and start the API and worker separately. Inspect service logs using `journalctl -u universalddns-api` and `journalctl -u universalddns-worker`. The API binds only to 127.0.0.1:8765; the worker runs independently.
 

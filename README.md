@@ -9,7 +9,7 @@
 
 **Experimental pre-alpha:** Modular self-hostable DDNS management platform. An authenticated FastAPI API and separately supervised publishing worker are available for experimental loopback-only deployments; a production-ready public service is not supplied.
 
-The [v0.3.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.3.0a1) is published; see its [release notes](docs/releases/v0.3.0a1.md). Earlier [v0.2.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1) and [v0.1.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) prereleases remain available.
+The **current `main` branch contains unreleased v0.4 development features**. The [v0.3.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.3.0a1) is published; see its [release notes](docs/releases/v0.3.0a1.md). Earlier [v0.2.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.2.0a1) and [v0.1.0a1](https://github.com/Monotoba/UniversalDDNSServer/releases/tag/v0.1.0a1) prereleases remain available.
 
 ## Implemented
 - Python 3.11+ immutable validated A/AAAA resource-record-set model with order-insensitive RRset comparison.
@@ -24,6 +24,18 @@ The [v0.3.0a1 alpha prerelease](https://github.com/Monotoba/UniversalDDNSServer/
 - Python 3.11–3.13 unit and BIND 9 integration tests, Ruff lint, scoped mypy checks and GitHub Actions.
 
 **Caution:** A queued intent does not mean DNS changed. A backend timeout may have an ambiguous outcome. `applying` intents after a crash require authoritative reconciliation; unattended retries, general multi-writer guarantees, production TLS, distributed rate limiting and validated production deployment are not implemented. Explicit retries require authoritative observation and an operator decision.
+
+## Unreleased v0.4 development features
+
+These features are in the development branch, **not** in the published v0.3.0a1 wheel:
+
+- SQLite catalog for operator-managed A/AAAA record templates, with revision-controlled creation, editing and staging active/inactive.
+- Scoped REST record discovery and asynchronous address updates for activated catalog records. Staging does not itself publish DNS.
+- Local-only credential issuance for active catalog records and credential inventory with local references; operators can revoke a credential without its bearer token.
+- Inactive-record grants do not block unrelated clients; reactivation is refused while unrevoked credentials still reference the record ID.
+- Transactional, nonsecret SQLite credential issuance/revocation audit with verified OS operator attribution for CLI credential mutations.
+
+**Security and operational boundary:** The credential management CLI requires a non-root POSIX user authorized through the `universalddns-operators` group. It must also have filesystem/database permissions granted by the host administrator; group membership alone does not grant access to SQLite or protected config files. Public HTTP credential administration and production internet-facing service are **not** supported. See [v0.4 local operator and upgrade guide](docs/operations/V0_4_LOCAL_OPERATOR_UPGRADE.md).
 
 ## Test the core
 
@@ -47,6 +59,7 @@ python -m unittest discover -s tests/integration -p 'test_*.py' -v
 - [Quality gates](docs/dev/QUALITY_AND_CI.md) · [Interfaces](docs/dev/INTERFACES.md) · [Plugins](docs/dev/PLUGINS.md)
 - [Isolated Ubuntu VM test kit](tests/deployment/README.md) · [Linux deployment](docs/operations/DEPLOYMENT.md) · [Pre-alpha release checklist](docs/operations/PREALPHA_RELEASE_CHECKLIST.md) · [Draft release notes](docs/operations/PREALPHA_RELEASE_NOTES_DRAFT.md)
 - [v0.3 experimental local upgrade and DynDNS2 client configuration](docs/operations/V0_3_LOCAL_UPGRADE.md)
+- [v0.4 operator provisioning and experimental upgrade](docs/operations/V0_4_LOCAL_OPERATOR_UPGRADE.md) · [Credential audit](docs/features/CREDENTIAL_LIFECYCLE_AUDIT.md) · [Controlled reactivation](docs/features/CONTROLLED_REACTIVATION.md)
 - [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
