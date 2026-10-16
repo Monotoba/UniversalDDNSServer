@@ -1,6 +1,6 @@
-"""Read one immutable SQLite snapshot generation through a pinned file descriptor.
+"""Read one SQLite snapshot generation through a pinned file descriptor.
 
-Not connected to the broker. Requires publisher-controlled files and directory.
+Not connected to broker. Requires publisher-controlled rollback-mode snapshots.
 """
 import os
 import sqlite3
@@ -12,28 +12,40 @@ from pathlib import Path
 from .record_inventory import MAX_RECORDS
 
 READ_DEADLINE_SECONDS = 1.0
+MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 
 
 def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
-    """Keep the same inode for metadata and counts across atomic replacement.
+    """Deserialize the same inode's bytes after an atomic destination replacement.
 
-    Linux-specific /proc/self/fd URI. Only safe for publisher-controlled,
-    rollback-mode standalone snapshots, never a changing live DB.
+    Reading via the already-open descriptor avoids SQLite reopening a deleted
+    pathname. Deserialization needs bounded memory; not for live databases.
     """
     fd = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022:
+        if (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022
+                or not 100 <= info.st_size <= MAX_SNAPSHOT_BYTES):
             raise ValueError("snapshot unavailable")
-        if os.pread(fd, 20, 0)[:16] != b"SQLite format 3\x00":
-            raise ValueError("snapshot unavailable")
-        if os.pread(fd, 2, 18) != b"\x01\x01":
+        header = os.pread(fd, 20, 0)
+        if header[:16] != b"SQLite format 3\x00" or header[18:20] != b"\x01\x01":
             raise ValueError("snapshot unavailable")
         deadline = time.monotonic() + READ_DEADLINE_SECONDS
-        # The file descriptor remains open while SQLite reads that same inode.
-        with sqlite3.connect(f"file:/proc/self/fd/{fd}?mode=ro&immutable=1",
-                             uri=True, timeout=0.2) as db:
+        chunks = []
+        remaining = info.st_size
+        while remaining:
+            if time.monotonic() >= deadline:
+                raise ValueError("snapshot unavailable")
+            block = os.read(fd, min(65536, remaining))
+            if not block:
+                raise ValueError("snapshot unavailable")
+            chunks.append(block)
+            remaining -= len(block)
+        if time.monotonic() >= deadline or os.fstat(fd).st_size != info.st_size:
+            raise ValueError("snapshot unavailable")
+        with sqlite3.connect(":memory:") as db:
+            db.deserialize(b"".join(chunks))
             db.execute("PRAGMA query_only=ON")
             db.set_progress_handler(lambda: int(time.monotonic() >= deadline), 100)
             row = db.execute(
@@ -60,7 +72,7 @@ def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
         return {"generation": generation, "created_at": created_at,
                 "total_records": total, "staged_active_records": active,
                 "staged_inactive_records": inactive}
-    except (OSError, sqlite3.Error, ValueError) as exc:
+    except (OSError, sqlite3.Error, ValueError, AttributeError) as exc:
         raise ValueError("snapshot unavailable") from exc
     finally:
         if fd is not None:
