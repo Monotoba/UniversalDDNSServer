@@ -27,7 +27,7 @@ sudo() {
     *) return 99 ;;
   esac
 }
-cleanup() {""" + function + "\n" + f"(exit {original_status})\ncleanup\n"
+cleanup() {""" + function + "\n" + f"if (exit {original_status}); then cleanup; else cleanup; fi\n"
         env = dict(os.environ, FAIL_AT=fail, ACTIVE="yes" if active else "no")
         return subprocess.run(["bash", "-c", script], capture_output=True,
                               text=True, timeout=5, env=env, check=False)
