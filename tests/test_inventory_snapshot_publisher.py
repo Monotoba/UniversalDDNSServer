@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from universalddns.inventory_snapshot import (
     publish_inventory_snapshot, snapshot_is_fresh, snapshot_fingerprint,
+    read_snapshot_generation,
 )
 
 
@@ -192,6 +193,28 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 publish_inventory_snapshot(self.source, self.target)
         self.assertEqual(snapshot_fingerprint(self.target), before)
+
+    def test_generation_changes_atomically_on_replacement(self):
+        publish_inventory_snapshot(self.source, self.target)
+        first = read_snapshot_generation(self.target)
+        self.assertEqual(len(first[0]), 32)
+        publish_inventory_snapshot(self.source, self.target)
+        second = read_snapshot_generation(self.target)
+        self.assertNotEqual(first[0], second[0])
+        self.assertGreaterEqual(second[1], first[1])
+
+    def test_failed_publication_preserves_generation(self):
+        publish_inventory_snapshot(self.source, self.target)
+        original = read_snapshot_generation(self.target)
+        with patch("universalddns.inventory_snapshot.os.replace",
+                   side_effect=OSError("interrupted before rename")):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+        self.assertEqual(read_snapshot_generation(self.target), original)
+
+    def test_missing_generation_rejected(self):
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_snapshot_generation(self.source)
 
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
