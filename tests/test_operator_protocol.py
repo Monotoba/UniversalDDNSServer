@@ -48,6 +48,8 @@ class OperatorProtocolTests(unittest.TestCase):
 
     def test_authenticated_broker_ping(self):
         a, b = socket.socketpair()
+        a.settimeout(3.0)
+        b.settimeout(3.0)
         try:
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        return_value="test-operator"):
