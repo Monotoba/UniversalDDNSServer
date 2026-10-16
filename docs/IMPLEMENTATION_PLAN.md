@@ -26,7 +26,8 @@ Phases are engineering milestones, not release dates. Status reflects reviewed r
 - [x] Authorized local-only record and credential administration, credential revocation, blocker inventory and SQLite audit events.
 - [x] Disposable Ubuntu VM live catalog -> REST -> worker -> authoritative BIND A test passed on 2026-10-16; temporary credential revoked and test record deactivated.
 - [x] Negative TSIG update authorization test passed on 2026-10-16: disallowed name refused and not created; original name-only BIND policy restored.
-- [ ] Validate a demonstrably cold, restorable VM backup and exercise isolated restore/rollback. A QCOW2 copy passed SHA-256 and `qemu-img check`, but its shutdown completion before copying has not been established.
+- [x] Capture a powered-off VM backup after explicitly observing `virsh domstate` = `shut off`; saved VM XML, QCOW2 disk and seed ISO in `~/vm-backups/uddns-prealpha-20261016-cold/`. User verified both SHA-256 checksums, clean `qemu-img check`, file inventory and subsequent VM restart (2026-10-16).
+- [ ] Perform an isolated boot/restore of the backup and exercise recovery/rollback; checksum and structural integrity checks do not prove a successful restore.
 - [ ] Harden operator database access: test VM currently grants `universalddns-operators` write access to the service-state directory. Document and test a narrower operational permission model.
 - [ ] Validate full production-safe upgrade, restoration, networking, monitoring and operational security. Current VM evidence is laboratory-only.
 
