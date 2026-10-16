@@ -3,7 +3,6 @@ from contextlib import ExitStack
 import socket
 import tempfile
 import threading
-import time
 import unittest
 from unittest.mock import patch
 
