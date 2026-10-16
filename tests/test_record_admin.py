@@ -20,7 +20,7 @@ class RecordAdminTests(unittest.TestCase):
             static = RecordSet("example.org", "static.example.org",
                                "A", 60, ("192.0.2.1",))
             settings = SimpleNamespace(database=db,
-                                       dns=SimpleNamespace(zone="example.org"),
+                                       zone="example.org",
                                        records={"static": static})
             base = ["record-admin", "--config", "unused"]
             create = base + ["create", "dynamic", "--name", "dynamic.example.org",
