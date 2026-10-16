@@ -18,6 +18,7 @@ def main():
     issue.add_argument("--scope", action="append", choices=("records:write", "intents:read"),
                        required=True)
     sub.add_parser("list", help="List local credential metadata without tokens or hashes")
+    sub.add_parser("history", help="Show recent local credential issuance and revocation events")
     ref_revoke = sub.add_parser("revoke-reference", help="Locally revoke credential using inventory reference")
     ref_revoke.add_argument("--reference", required=True)
     revoke = sub.add_parser("revoke")
@@ -45,6 +46,10 @@ def main():
             if not store.revoke_reference(args.reference):
                 parser.error("credential not found or already revoked")
         print("revoked")
+    elif args.operation == "history":
+        local_operator_identity()
+        with TokenStore(settings.database) as store:
+            print(json.dumps(store.audit_history(), sort_keys=True, indent=2))
     elif args.operation == "list":
         with TokenStore(settings.database) as store:
             print(json.dumps(store.list_metadata(), sort_keys=True, indent=2))
