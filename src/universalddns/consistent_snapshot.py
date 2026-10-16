@@ -25,7 +25,8 @@ def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o022
+        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_uid != os.geteuid() or info.st_nlink != 1
                 or not 100 <= info.st_size <= MAX_SNAPSHOT_BYTES):
             raise ValueError("snapshot unavailable")
         header = os.pread(fd, 20, 0)
@@ -42,7 +43,10 @@ def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
                 raise ValueError("snapshot unavailable")
             chunks.append(block)
             remaining -= len(block)
-        if time.monotonic() >= deadline or os.fstat(fd).st_size != info.st_size:
+        after = os.fstat(fd)
+        if (time.monotonic() >= deadline or after.st_size != info.st_size
+                or after.st_mtime_ns != info.st_mtime_ns
+                or after.st_ctime_ns != info.st_ctime_ns):
             raise ValueError("snapshot unavailable")
         with sqlite3.connect(":memory:") as db:
             db.deserialize(b"".join(chunks))
