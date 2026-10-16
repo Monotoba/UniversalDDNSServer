@@ -64,7 +64,7 @@ class RecordInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory unavailable"):
             read_record_inventory(self.path)
 
-    def test_wal_snapshot_read_does_not_mutate_existing_files(self):
+    def test_wal_sidecars_are_refused_without_mutation(self):
         self.initialize([0, 1])
         writer = sqlite3.connect(self.path)
         try:
@@ -73,7 +73,7 @@ class RecordInventoryTests(unittest.TestCase):
                            ("third", "example.test", "third", "A", 300, "[]", 1, 1))
             writer.commit()
             before = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
-            self.assertEqual(read_record_inventory(self.path)["total_records"], 3)
+            with self.assertRaisesRegex(ValueError, "^inventory unavailable$"):\n                read_record_inventory(self.path)
             after = {p.name: p.read_bytes() for p in self.path.parent.iterdir()}
             self.assertEqual(after, before)
         finally:
