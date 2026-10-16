@@ -1,5 +1,6 @@
 """Isolated SQLite snapshot producer; not wired to the broker or services."""
 import os
+import fcntl
 import sqlite3
 import stat
 import tempfile
@@ -10,6 +11,7 @@ from urllib.parse import quote
 from .record_inventory import read_record_inventory
 
 SNAPSHOT_MAX_AGE_SECONDS = 300
+BACKUP_DEADLINE_SECONDS = 5.0
 
 
 def snapshot_is_fresh(path: str | Path, *, now: float | None = None) -> bool:
@@ -42,7 +44,18 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
     if os.fstat(directory_fd).st_ino != info.st_ino or os.fstat(directory_fd).st_dev != info.st_dev:
         os.close(directory_fd)
         raise ValueError("snapshot unavailable")
+    lock_fd = None
     try:
+        # The lock inode persists; never unlink it (avoids split-brain locks).
+        lock_fd = os.open(".inventory-publish.lock",
+                          os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600,
+                          dir_fd=directory_fd)
+        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+            raise ValueError("snapshot unavailable")
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError("snapshot unavailable") from exc
         fd, temp_name = tempfile.mkstemp(prefix=".inventory-", suffix=".sqlite3", dir=parent)
         os.close(fd)
         temp = Path(temp_name)
@@ -52,7 +65,15 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
         ) + "?mode=ro"
         with sqlite3.connect(uri, uri=True, timeout=0.2) as live:
             with sqlite3.connect(temp) as copy:
-                live.backup(copy, pages=64, sleep=0.01)
+                deadline = time.monotonic() + BACKUP_DEADLINE_SECONDS
+
+                def backup_progress(status: int, remaining: int, total: int) -> None:
+                    if time.monotonic() >= deadline:
+                        raise ValueError("snapshot unavailable")
+
+                live.backup(copy, pages=64, sleep=0.01, progress=backup_progress)
+                if time.monotonic() >= deadline:
+                    raise ValueError("snapshot unavailable")
                 journal = copy.execute("PRAGMA journal_mode=DELETE").fetchone()
                 if journal != ("delete",):
                     raise ValueError("snapshot unavailable")
@@ -73,4 +94,6 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
     finally:
         if 'temp' in locals():
             temp.unlink(missing_ok=True)
+        if lock_fd is not None:
+            os.close(lock_fd)
         os.close(directory_fd)
