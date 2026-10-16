@@ -29,12 +29,15 @@ def run(config: Path, *args: str, expected: int = 0) -> str:
 
 
 def check() -> None:
-    if os.uname().nodename.split(".")[0] != "uddns-prealpha":
-        raise RuntimeError("refusing unexpected host")
-    virtualized = subprocess.run(["systemd-detect-virt", "--vm"],
-                                 capture_output=True, check=False)
-    if virtualized.returncode:
-        raise RuntimeError("disposable VM required")
+    ci_fixture = (os.environ.get("GITHUB_ACTIONS") == "true"
+                  and os.environ.get("UDDNS_CI_ISOLATED_FIXTURE") == "1")
+    if not ci_fixture:
+        if os.uname().nodename.split(".")[0] != "uddns-prealpha":
+            raise RuntimeError("refusing unexpected host")
+        virtualized = subprocess.run(["systemd-detect-virt", "--vm"],
+                                     capture_output=True, check=False)
+        if virtualized.returncode:
+            raise RuntimeError("disposable VM required")
     operator = local_operator_identity()
     with tempfile.TemporaryDirectory(prefix="uddns-operator-cli-") as tmp:
         root = Path(tmp)
