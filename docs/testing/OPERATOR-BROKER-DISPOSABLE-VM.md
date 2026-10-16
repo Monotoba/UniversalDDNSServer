@@ -264,3 +264,22 @@ The real broker's authenticated ping succeeded, and the temporary test unit
 was cleaned up. The isolated test used a **30-second** window, not the
 broker's **10-second** window. This does not prove socket-triggered
 recovery from repeated broker-specific startup failures.
+
+
+## 11. Read-only capabilities operation — 2026-10-16
+
+The operator installed source commit `4a516c9897bf92789945295305cb2c632b604dd9`
+(non-editable wheel, package version `0.4.0a1`) on the dedicated
+`uddns-broker-test-01` guest. The package imported under the service
+account and the experimental service restarted successfully. An authorized
+`broker-test-operator` received exactly `["ping", "capabilities"]` from
+the version-1 `capabilities` request; existing `ping` still worked.
+An `issue` mutation request returned `invalid request`, and the
+unauthorized `ubuntu` account received `PermissionError` connecting
+to the Unix socket. Journald contained
+`operator_capabilities_succeeded`, `operator_ping_succeeded`, and
+`operator_request_rejected`. Both socket and service remained active;
+`MemoryMax=134217728`, `TasksMax=16`, `LimitNOFILE=256`, and
+`StartLimitBurst=5` were observed. This is manually reported VM
+acceptance evidence, not an automated CI guest test. No database access
+or new release was involved.
