@@ -27,7 +27,8 @@ Phases are engineering milestones, not release dates. Status reflects reviewed r
 - [x] Disposable Ubuntu VM live catalog -> REST -> worker -> authoritative BIND A test passed on 2026-10-16; temporary credential revoked and test record deactivated.
 - [x] Negative TSIG update authorization test passed on 2026-10-16: disallowed name refused and not created; original name-only BIND policy restored.
 - [x] Capture a powered-off VM backup after explicitly observing `virsh domstate` = `shut off`; saved VM XML, QCOW2 disk and seed ISO in `~/vm-backups/uddns-prealpha-20261016-cold/`. User verified both SHA-256 checksums, clean `qemu-img check`, file inventory and subsequent VM restart (2026-10-16).
-- [ ] Perform an isolated boot/restore of the backup and exercise recovery/rollback; checksum and structural integrity checks do not prove a successful restore.
+- [x] Boot an independent isolated restore VM from a copied cold QCOW2: Ubuntu 24.04 reached login, no network interfaces were attached, libguestfs recovered application files/systemd units, restored SQLite `PRAGMA integrity_check` returned `ok` with expected five tables, and QEMU guest agent confirmed API, worker and BIND services each `active` (2026-10-16).
+- [ ] Validate application-level request/DNS behavior inside the restored guest and exercise a controlled rollback/failure recovery; basic boot, filesystem, DB and service activation are not a production disaster-recovery guarantee.
 - [ ] Harden operator database access: test VM currently grants `universalddns-operators` write access to the service-state directory. Document and test a narrower operational permission model.
 - [ ] Validate full production-safe upgrade, restoration, networking, monitoring and operational security. Current VM evidence is laboratory-only.
 
