@@ -48,6 +48,25 @@ class TokenStore:
             "revoked": bool(revoked),
         } for principal, scopes, records, revoked in rows)
 
+    def blocking_grants(self, record_id: str) -> tuple[dict[str, object], ...]:
+        """List active credential metadata that blocks catalog reactivation.
+
+        Never return bearer tokens or credential hashes. Multiple grants from
+        the same principal remain distinct, since each requires revocation.
+        """
+        if not record_id or not isinstance(record_id, str):
+            raise ValueError("record identifier required")
+        rows = self.db.execute(
+            "SELECT principal,scopes,records FROM api_tokens "
+            "WHERE revoked=0 ORDER BY principal,rowid"
+        ).fetchall()
+        return tuple({
+            "principal": principal,
+            "scopes": sorted(json.loads(scopes)),
+            "records": sorted(json.loads(records)),
+        } for principal, scopes, records in rows
+            if record_id in json.loads(records))
+
     def close(self):
         self.db.close()
 
