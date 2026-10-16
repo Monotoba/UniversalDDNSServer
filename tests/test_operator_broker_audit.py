@@ -1,5 +1,6 @@
 """Structured broker audit events exclude rejected peer claims and request payloads."""
 import socket
+from contextlib import ExitStack
 import unittest
 from unittest.mock import patch
 
@@ -8,7 +9,10 @@ from universalddns.operator_broker import handle_connection
 
 class BrokerAuditTests(unittest.TestCase):
     def test_successful_ping_audits_kernel_identity(self):
-        with socket.socketpair() as (server, client):
+        with ExitStack() as stack:
+            server, client = socket.socketpair()
+            stack.enter_context(server)
+            stack.enter_context(client)
             client.sendall(b'{"version":1,"operation":"ping"}\n')
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        return_value="authorized"), \
@@ -19,7 +23,10 @@ class BrokerAuditTests(unittest.TestCase):
                                           operator="authorized")
 
     def test_invalid_request_audits_without_payload(self):
-        with socket.socketpair() as (server, client):
+        with ExitStack() as stack:
+            server, client = socket.socketpair()
+            stack.enter_context(server)
+            stack.enter_context(client)
             client.sendall(b'{"token":"secret","operation":"write"}\n')
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        return_value="authorized"), \
@@ -30,7 +37,10 @@ class BrokerAuditTests(unittest.TestCase):
                                           operator="authorized")
 
     def test_unauthorized_peer_audits_without_identity_or_read(self):
-        with socket.socketpair() as (server, client):
+        with ExitStack() as stack:
+            server, client = socket.socketpair()
+            stack.enter_context(server)
+            stack.enter_context(client)
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        side_effect=PermissionError("untrusted secret identity")), \
                  patch("universalddns.operator_broker.read_request") as read, \
@@ -40,7 +50,10 @@ class BrokerAuditTests(unittest.TestCase):
             audit.assert_called_once_with("operator_peer_rejected")
 
     def test_broken_response_not_misreported_as_success(self):
-        with socket.socketpair() as (server, client):
+        with ExitStack() as stack:
+            server, client = socket.socketpair()
+            stack.enter_context(server)
+            stack.enter_context(client)
             with patch("universalddns.operator_broker.authenticated_operator_peer",
                        return_value="authorized"), \
                  patch("universalddns.operator_broker.read_request"), \
