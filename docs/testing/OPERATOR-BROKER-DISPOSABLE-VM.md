@@ -187,3 +187,40 @@ service remained active; `MemoryCurrent=6565888` bytes,
 `TasksCurrent=5`, `MemoryMax=134217728` and `TasksMax=16` were observed.
 This does not establish performance under sustained flooding, queue
 saturation across many client processes, or resource-limit exhaustion.
+
+
+## 8. Journald retention and boot-time socket activation — 2026-10-16
+
+The operator reported a successful authenticated ping and matching
+`operator_ping_succeeded` journal event, then flushed journald before
+rebooting the disposable VM. The boot ID changed from
+`fb824b0ef913494bb9f79ca46cee8bb7` to
+`c62e3312b67c4e308021228840fd0264`. Journalctl listed both boots,
+and `journalctl -b fb824b0ef913494bb9f79ca46cee8bb7` showed retained
+operator audit records. The first attempt using a hyphenated boot ID failed
+with an invalid-argument error; removing hyphens resolved the query.
+This demonstrates observed persistence across one reboot, not guaranteed
+long-term retention or tamper resistance.
+
+The socket was initially `disabled` and `inactive` after that reboot.
+On the disposable VM only, `systemctl enable --now
+universalddns-operator.socket` made it `enabled` and `active`, with
+socket mode `0660`, owner `universalddns` and group
+`universalddns-operators`. The static service remained inactive before
+an authorized ping triggered activation. A subsequent reboot changed the
+boot ID from `c62e3312-b67c-4e30-8021-228840fd0264` to
+`92a95b91-9bab-48f9-8aa5-8fb541f6a564`; the enabled socket was
+available automatically, retained its intended permissions, and an
+authenticated ping succeeded without manual startup.
+
+### Restart-rate policy review
+
+The service has **no** `Restart=` directive: `NRestarts=0` during the
+observed crash recovery, which was triggered by a subsequent connection.
+Systemd start-rate protection and socket activation interactions still
+require explicit, bounded failure-loop tests. Do not infer resistance to
+repeated immediate startup failures (the early editable-install failure
+previously encountered the start limit). Do not add an automatic restart
+loop or increase rate thresholds without empirical disposable-guest testing.
+The opt-in socket remains enabled only on this disposable VM, not in
+production. The broker is still ping-only.
