@@ -20,7 +20,7 @@
 - [ ] On actual `uddns-prealpha` guest, validate hostname, isolation, active default libvirt network and loopback API binding.
 - [x] Run guarded `update-vm.sh` upgrade and read-only `--verify`; user-provided output confirmed API/worker/named active at `a15dadf8` with backup `/var/lib/universalddns/upgrade-backup-20261016T085637Z`.
 - [x] Run static record `vm-test.sh update` against isolated `home.lab.invalid` and verify authoritative BIND output; user-provided output 2026-10-16: PASS (earlier deployed revision).
-- [ ] Run `vm-test.sh tsig-deny` against prohibited names.
+- [x] Run `vm-test.sh tsig-deny` against prohibited names; user-provided output on `uddns-prealpha` 2026-10-16: `PASS: BIND rejected unauthorized TSIG update with REFUSED; no record created`; `FINAL_RESULT=PASS`; log `/home/ubuntu/uddns-results/20261016T092020Z-tsig-deny.log`.
 - [x] With authorized non-root Ubuntu operator, test isolated CLI create/activate/issue/block/revoke/reactivate/audit and live installed-service catalog create/activate/issue/discover/submit/publish/deactivate/revoke. User-provided logs 2026-10-16: PASS; live name `catalog-live.lab.invalid.` published `192.0.2.73` on `a15dadf8`. Safe reactivation verified in separate isolated CLI fixture, not live service.
 - [ ] Confirm no stale token grants unrelated-record access, no accidental reactivation grant, and queued work is rejected after authorization loss; recognize in-flight write limitations.
 - [ ] Inspect local credential history; confirm verified operator identity, no bearer/digest disclosure and durable audit after restart.
@@ -44,9 +44,9 @@
 
 ## Known blockers/limitations
 
-- Operator-group CLI fixture and live catalog-to-BIND tests **passed on the disposable VM** on 2026-10-16 using commit `a15dadf8`; live test left an inactive catalog fixture and DNS RRset. Reboot, negative TSIG policy, full crash recovery and rollback still need review as independently scoped gates.
+- Operator-group CLI fixture and live catalog-to-BIND tests **passed on the disposable VM** on 2026-10-16 using commit `a15dadf8`; live test left an inactive catalog fixture and DNS RRset. Reboot, full crash recovery and rollback still need review as independently scoped gates; negative TSIG-policy test passed on 2026-10-16.
 - Actual in-flight network interruption and strong DNS-write fencing remain unproven.
-- Published v0.3.0a1 remains the last documented release; candidate-branch version metadata is being moved to `0.4.0a1`, not yet tagged.
+- Published v0.3.0a1 remains the last documented release; `main` metadata now reads `0.4.0a1`, not yet tagged.
 - No approval has been granted for a v0.4 release.
 
 Evidence links and disposition should be added next to each checkbox before declaring the release ready.
@@ -58,7 +58,7 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Isolated operator CLI lifecycle completed `PASS: isolated operator CLI issue, block, revoke, reactivate and audit`.
 - BIND policy was explicitly extended for only `catalog-live.lab.invalid.` A; pretest authoritative NXDOMAIN confirmed.
 - Live installed test reported `PASS: active catalog -> scoped REST -> worker -> authoritative BIND A`, followed by confirmed deactivation and temporary credential revocation. It left an inactive catalog row and published DNS RRset by design.
-- **Unverified:** independent powered-off VM snapshot evidence, explicit negative TSIG-policy test, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
+- **Unverified:** independent powered-off VM snapshot evidence, ACL rollback/production permission hardening, final candidate checks after documentation edits and release-asset verification. Operator confirmed BIND catalog-only grant removal with `named-checkconf -z`, reload and readback; both `home` and `catalog-live` DNS records still resolved.
 
 ## 2026-10-16 candidate CI artifact evidence
 
@@ -66,3 +66,9 @@ Evidence links and disposition should be added next to each checkbox before decl
 - Wheel: `universalddnsserver-0.4.0a1-py3-none-any.whl`, SHA-256 `81895cba827f93ab3f8df2e420ca105ffb642c4d2c1fb71921d4c1ce5647f20b`.
 - Sdist: `universalddnsserver-0.4.0a1.tar.gz`, SHA-256 `183d84ae8d51007b37b14c38f6bcdce7bb11613f7d9eec1d788cc87b0d1f9e11`.
 - Digests are from the successful **CI build**, not downloaded/published release assets. Do not claim artifact portability, reproducibility, or release verification from these values. Rebuild and verify final assets from the approved immutable tag.
+
+## 2026-10-16 negative TSIG authorization evidence
+
+- After restoring BIND's original named-only update policy, the operator executed `vm-test.sh tsig-deny` on `uddns-prealpha`.
+- The attempt to update `disallowed-tsig-probe.lab.invalid.` with the valid lab TSIG credential was rejected with `REFUSED`; the probe did not create an A record. Test exit reported `FINAL_RESULT=PASS`, with guest log `/home/ubuntu/uddns-results/20261016T092020Z-tsig-deny.log`.
+- Evidence is user-provided CLI output. No secret material was included. This verifies the restricted policy for the tested name, not every possible DNS ACL or production deployment.
