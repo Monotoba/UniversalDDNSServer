@@ -5,6 +5,7 @@ from .runtime import load_settings
 from .token_store import TokenStore
 from .record_catalog import RecordCatalog
 from .record_snapshot import catalog_snapshot
+from .local_operator import local_operator_identity
 
 
 def main():
@@ -17,6 +18,8 @@ def main():
     issue.add_argument("--scope", action="append", choices=("records:write", "intents:read"),
                        required=True)
     sub.add_parser("list", help="List local credential metadata without tokens or hashes")
+    ref_revoke = sub.add_parser("revoke-reference", help="Locally revoke credential using inventory reference")
+    ref_revoke.add_argument("--reference", required=True)
     revoke = sub.add_parser("revoke")
     revoke.add_argument("--token-stdin", action="store_true", required=True)
     args = parser.parse_args()
@@ -36,6 +39,12 @@ def main():
         with TokenStore(settings.database) as store:
             token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record))
         print(token)
+    elif args.operation == "revoke-reference":
+        local_operator_identity()
+        with TokenStore(settings.database) as store:
+            if not store.revoke_reference(args.reference):
+                parser.error("credential not found or already revoked")
+        print("revoked")
     elif args.operation == "list":
         with TokenStore(settings.database) as store:
             print(json.dumps(store.list_metadata(), sort_keys=True, indent=2))

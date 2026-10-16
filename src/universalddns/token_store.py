@@ -57,15 +57,29 @@ class TokenStore:
         if not record_id or not isinstance(record_id, str):
             raise ValueError("record identifier required")
         rows = self.db.execute(
-            "SELECT principal,scopes,records FROM api_tokens "
+            "SELECT rowid,principal,scopes,records FROM api_tokens "
             "WHERE revoked=0 ORDER BY principal,rowid"
         ).fetchall()
         return tuple({
+            "reference": f"cred-{rowid}",
             "principal": principal,
             "scopes": sorted(json.loads(scopes)),
             "records": sorted(json.loads(records)),
-        } for principal, scopes, records in rows
+        } for rowid, principal, scopes, records in rows
             if record_id in json.loads(records))
+
+    def revoke_reference(self, reference: str) -> bool:
+        """Revoke by exact local credential reference, without the bearer."""
+        if not isinstance(reference, str) or not reference.startswith("cred-"):
+            raise ValueError("invalid credential reference")
+        identifier = reference[5:]
+        if not identifier.isascii() or not identifier.isdecimal() or not 1 <= len(identifier) <= 18 or int(identifier) < 1:
+            raise ValueError("invalid credential reference")
+        with self.db:
+            return self.db.execute(
+                "UPDATE api_tokens SET revoked=1 WHERE rowid=? AND revoked=0",
+                (int(identifier),),
+            ).rowcount == 1
 
     def close(self):
         self.db.close()
