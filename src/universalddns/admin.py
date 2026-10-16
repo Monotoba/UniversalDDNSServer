@@ -41,9 +41,9 @@ def main():
             token = store.issue(args.principal, frozenset(args.scope), frozenset(args.record))
         print(token)
     elif args.operation == "revoke-reference":
-        local_operator_identity()
+        operator = local_operator_identity()
         with TokenStore(settings.database) as store:
-            if not store.revoke_reference(args.reference):
+            if not store.revoke_reference(args.reference, operator=operator):
                 parser.error("credential not found or already revoked")
         print("revoked")
     elif args.operation == "history":
