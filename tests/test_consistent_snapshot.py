@@ -1,5 +1,6 @@
 """Generation-consistent snapshot reader under atomic replacement."""
 import sqlite3
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,6 +58,43 @@ class ConsistentSnapshotTests(unittest.TestCase):
         current = read_consistent_snapshot(self.snapshot)
         self.assertNotEqual(current["generation"], original["generation"])
         self.assertEqual(current["total_records"], 2)
+
+    def test_world_readable_snapshot_refused(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        self.snapshot.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_hardlinked_snapshot_refused(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        os.link(self.snapshot, self.snapshot.parent / "alias.sqlite3")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_corrupted_header_refused(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        with self.snapshot.open("r+b") as stream:
+            stream.write(b"not-sqlite")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_changed_file_during_read_refused(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        original_read = os.read
+        changed = [False]
+
+        def modify_after_first_chunk(fd, count):
+            chunk = original_read(fd, count)
+            if not changed[0]:
+                changed[0] = True
+                with self.snapshot.open("ab") as stream:
+                    stream.write(b"changed")
+            return chunk
+
+        with patch("universalddns.consistent_snapshot.os.read",
+                   side_effect=modify_after_first_chunk):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                read_consistent_snapshot(self.snapshot)
 
     def test_missing_or_symlink_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
