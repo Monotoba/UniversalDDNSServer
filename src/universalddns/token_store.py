@@ -26,20 +26,22 @@ class TokenStore:
             self.db.execute("ALTER TABLE credential_audit ADD COLUMN operator TEXT")
         self.db.commit()
 
-    def issue(self, principal: str, scopes: frozenset[str], records: frozenset[str]) -> str:
+    def issue(self, principal: str, scopes: frozenset[str], records: frozenset[str], *, operator: str | None = None) -> str:
         if not principal.strip() or not scopes or not records:
             raise ValueError("principal, scopes and records required")
+        self._validate_operator(operator)
         token = secrets.token_urlsafe(48)
         with self.db:
             cursor = self.db.execute("INSERT INTO api_tokens VALUES(?,?,?,?,0)",
                                      (hashlib.sha256(token.encode()).hexdigest(), principal,
                                       json.dumps(sorted(scopes)), json.dumps(sorted(records))))
             self.db.execute(
-                "INSERT INTO credential_audit(action,credential_reference,principal) "
-                "VALUES ('issued',?,?)", (f"cred-{cursor.lastrowid}", principal))
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('issued',?,?,?)", (f"cred-{cursor.lastrowid}", principal, operator))
         return token
 
-    def revoke(self, token: str) -> bool:
+    def revoke(self, token: str, *, operator: str | None = None) -> bool:
+        self._validate_operator(operator)
         with self.db:
             row = self.db.execute(
                 "SELECT rowid,principal FROM api_tokens WHERE digest=? AND revoked=0",
@@ -48,8 +50,8 @@ class TokenStore:
                 return False
             self.db.execute("UPDATE api_tokens SET revoked=1 WHERE rowid=?", (row[0],))
             self.db.execute(
-                "INSERT INTO credential_audit(action,credential_reference,principal) "
-                "VALUES ('revoked',?,?)", (f"cred-{row[0]}", row[1]))
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('revoked',?,?,?)", (f"cred-{row[0]}", row[1], operator))
             return True
 
     def principals(self) -> tuple[APIPrincipal, ...]:
@@ -97,8 +99,7 @@ class TokenStore:
         identifier = reference[5:]
         if not identifier.isascii() or not identifier.isdecimal() or not 1 <= len(identifier) <= 18 or int(identifier) < 1:
             raise ValueError("invalid credential reference")
-        if operator is not None and (not isinstance(operator, str) or not operator or len(operator) > 128):
-            raise ValueError("invalid operator attribution")
+        self._validate_operator(operator)
         with self.db:
             row = self.db.execute(
                 "SELECT principal FROM api_tokens WHERE rowid=? AND revoked=0",
@@ -111,6 +112,15 @@ class TokenStore:
                 "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
                 "VALUES ('revoked',?,?,?)", (reference, row[0], operator))
             return True
+
+    @staticmethod
+    def _validate_operator(operator: str | None) -> None:
+        if operator is not None and (
+            not isinstance(operator, str) or not 1 <= len(operator) <= 128
+            or not operator.isascii()
+            or any(not (ch.isalnum() or ch in "-_.") for ch in operator)
+        ):
+            raise ValueError("invalid operator attribution")
 
     def audit_history(self, *, limit: int = 100) -> tuple[dict[str, object], ...]:
         """Newest nonsecret local credential events, bounded to 1000."""
