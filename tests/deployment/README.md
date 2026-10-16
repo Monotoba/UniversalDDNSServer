@@ -79,6 +79,16 @@ The `update` mode tests only the **static** `home.lab.invalid` A record: authent
 
 The `--verify` updater mode validates installed services without deliberately publishing DNS. The `report` mode collects local evidence; inspect archives for sensitive output before sharing. `offline-restore` modifies the installed VM database and requires an independent snapshot; do not run it as routine read-only verification. Keep the VM loopback-only and avoid production zones.
 
+## v0.4 scratch-only catalog and credential lifecycle regression
+
+Run this check inside the installed disposable VM with the installed virtualenv, after the guarded update:
+
+```sh
+ssh ubuntu@VM_IP '/opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-catalog-lifecycle.py'
+```
+
+It creates a temporary SQLite database under the running user's temporary directory and checks record staging, token grant visibility, refusal to reactivate while a stale grant exists, reference-based revocation, audit operator metadata, safe activation, and replacement credentials. It does **not** open the installed production/service SQLite database, contact HTTP/BIND, issue a usable installed-service credential, or modify any running service. The `fixture` audit actor is synthetic test metadata, **not** a verified OS operator. This test is helpful VM-side coverage, but does not replace the separate release-gate requirement to exercise real operator-group permissions and live installed-service catalog changes.
+
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 
 After preserving a VM snapshot or backing up the virtual disk, update the VM checkout and run `bash ~/vm-test.sh offline-restore`. This mode refuses non-VM hosts and hostnames other than `uddns-prealpha`, stops both app services, backs up the stopped SQLite database, restores the same snapshot via an atomic file replacement, verifies data, service-account ownership (`universalddns:universalddns`) and restrictive permissions (`0600`), then starts both services and performs installed-host verification. Failure cleanup attempts to restore the original and restart both services. **Do not run on production systems.** The operator should still retain an independent VM snapshot in case the guest or host crashes during file replacement.
