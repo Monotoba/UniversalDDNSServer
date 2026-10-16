@@ -28,6 +28,7 @@ class OperatorSystemdContractTests(unittest.TestCase):
         self.assertEqual(section["SocketGroup"], "universalddns-operators")
         self.assertEqual(section["SocketMode"], "0660")
         self.assertEqual(section["DirectoryMode"], "0711")
+        self.assertEqual(section["Backlog"], "16")
         self.assertEqual(section["FileDescriptorName"], "operator")
         self.assertEqual(section["Service"], "universalddns-operator.service")
         self.assertEqual(section["RemoveOnStop"], "yes")
@@ -41,6 +42,9 @@ class OperatorSystemdContractTests(unittest.TestCase):
         service = load_unit("universalddns-operator.service")
         settings = service["Service"]
         self.assertEqual(settings["User"], "universalddns")
+        self.assertEqual(settings["Restart"], "no")
+        self.assertEqual(service["Unit"]["StartLimitIntervalSec"], "10s")
+        self.assertEqual(service["Unit"]["StartLimitBurst"], "5")
         self.assertEqual(settings["Group"], "universalddns")
         self.assertEqual(settings["RestrictAddressFamilies"], "AF_UNIX")
         self.assertEqual(settings["NoNewPrivileges"], "yes")
