@@ -145,6 +145,36 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
                              for p in moved.iterdir()))
         self.assertEqual(list(self.private.iterdir()), [])
 
+    def test_abandoned_staging_removed_before_publish(self):
+        orphan = self.private / ".inventory-orphan.sqlite3"
+        orphan.write_bytes(b"incomplete")
+        orphan.chmod(0o600)
+        self.assertEqual(publish_inventory_snapshot(self.source, self.target)["total_records"], 1)
+        self.assertFalse(orphan.exists())
+        self.assertTrue(self.target.exists())
+
+    def test_unsafe_orphan_fails_closed_without_deletion(self):
+        orphan = self.private / ".inventory-unsafe.sqlite3"
+        orphan.symlink_to(self.source)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            publish_inventory_snapshot(self.source, self.target)
+        self.assertTrue(orphan.is_symlink())
+        self.assertFalse(self.target.exists())
+
+    def test_recovery_refuses_when_lock_is_held(self):
+        orphan = self.private / ".inventory-orphan.sqlite3"
+        orphan.write_bytes(b"incomplete")
+        orphan.chmod(0o600)
+        lock = self.private / ".inventory-publish.lock"
+        descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                publish_inventory_snapshot(self.source, self.target)
+            self.assertTrue(orphan.exists())
+        finally:
+            os.close(descriptor)
+
     def test_freshness_is_bounded(self):
         publish_inventory_snapshot(self.source, self.target)
         now = self.target.stat().st_mtime
