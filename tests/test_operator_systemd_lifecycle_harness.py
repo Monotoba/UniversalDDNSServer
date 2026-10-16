@@ -18,6 +18,16 @@ class DisposableSystemdLifecycleContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("explicit opt-in required", result.stderr)
 
+    def test_failed_cleanup_cannot_report_success(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("sudo systemctl stop universalddns-operator.socket universalddns-operator.service || true", script)
+        self.assertIn("preserving test unit files for investigation", script)
+        self.assertIn("broker still active; preserving test unit files", script)
+        self.assertIn("unable to remove broker test units", script)
+        self.assertIn("systemd reload after cleanup failed", script)
+        self.assertIn("broker socket path remains after shutdown", script)
+        self.assertIn("-L /run/universalddns/operator.sock", script)
+
     def test_admission_precedes_mutation(self):
         script = SCRIPT.read_text(encoding="utf-8")
         preflight = script.index("check-operator-broker-preflight.sh")
