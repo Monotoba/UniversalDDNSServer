@@ -12,15 +12,13 @@ import os
 import sys
 from universalddns.local_operator import local_operator_identity
 from universalddns.runtime import load_settings
-from universalddns.token_store import TokenStore
-from universalddns.record_catalog import RecordCatalog
+from urllib.parse import quote
 
 operator = local_operator_identity()
 settings = load_settings(sys.argv[1])
 # Read-only SQLite connections avoid creating tables or writing schema migrations.
 import sqlite3
-uri = "file:" + __import__("urllib.parse", fromlist=["quote"]).quote(
-    os.fspath(settings.database), safe="/") + "?mode=ro"
+uri = "file:" + quote(os.path.abspath(os.fspath(settings.database)), safe="/") + "?mode=ro"
 with sqlite3.connect(uri, uri=True) as db:
     db.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
     for table in ("managed_records", "api_tokens", "credential_audit"):
@@ -30,7 +28,5 @@ with sqlite3.connect(uri, uri=True) as db:
             raise RuntimeError("Required SQLite table missing: " + table)
 print("PASS: authorized non-root operator, readable configuration and SQLite metadata")
 PY
-# Check the installed CLI's read-only paths without printing confidential metadata.
-"$PYTHON" -m universalddns.record_admin --config "$CONFIG" list >/dev/null
-"$PYTHON" -m universalddns.admin --config "$CONFIG" history >/dev/null
-echo "PASS: record catalog listing and credential history available to verified operator"
+# Management CLIs may initialize/migrate stores; do not invoke them in a read-only preflight.
+echo "PASS: operator preflight did not issue tokens, write SQLite or access DNS"
