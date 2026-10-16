@@ -28,7 +28,7 @@ class RecordAdminTests(unittest.TestCase):
                              "--address", "192.0.2.12"]
             def call(arguments, *, authorized=True):
                 with (patch("sys.argv", arguments),
-                      patch("universalddns.record_admin.load_settings",
+                      patch("universalddns.record_admin.load_admin_settings",
                             return_value=settings),
                       patch("universalddns.record_admin.local_operator_identity",
                             side_effect=None if authorized else PermissionError("not authorized"),
