@@ -126,18 +126,18 @@ class ConsistentSnapshotTests(unittest.TestCase):
 
     def test_changed_file_during_read_refused(self):
         publish_inventory_snapshot(self.live, self.snapshot)
-        original_read = os.read
+        original_read = os.pread
         changed = [False]
 
-        def modify_after_first_chunk(fd, count):
-            chunk = original_read(fd, count)
+        def modify_after_first_chunk(fd, count, offset):
+            chunk = original_read(fd, count, offset)
             if not changed[0]:
                 changed[0] = True
                 with self.snapshot.open("ab") as stream:
                     stream.write(b"changed")
             return chunk
 
-        with patch("universalddns.consistent_snapshot.os.read",
+        with patch("universalddns.consistent_snapshot.os.pread",
                    side_effect=modify_after_first_chunk):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 read_consistent_snapshot(self.snapshot)
