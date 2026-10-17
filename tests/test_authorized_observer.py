@@ -6,7 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from universalddns.authorized_observer import publish_with_authorized_child
+from universalddns.authorized_observer import (
+    publish_with_authorized_child, read_current_authorized_snapshot,
+)
 from universalddns.consistent_snapshot import read_consistent_snapshot
 from universalddns.snapshot_issuance import SnapshotIssuanceRegistry
 
@@ -77,6 +79,48 @@ class AuthorizedObserverTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 publish_with_authorized_child(
                     self.source, self.target, self.registry)
+
+
+    def test_current_read_refuses_unobserved_external_republication(self):
+        from universalddns.inventory_snapshot import publish_inventory_snapshot
+        publish_with_authorized_child(self.source, self.target, self.registry)
+        old = read_consistent_snapshot(self.target)
+        self.assertEqual(
+            read_current_authorized_snapshot(self.target, self.registry)["generation"],
+            old["generation"])
+        # A second publisher does not update the parent's registry.
+        publish_inventory_snapshot(self.source, self.target)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_current_authorized_snapshot(self.target, self.registry)
+        # The older detached record can still be accepted by the legacy
+        # registry, demonstrating why callers need the guarded path read.
+        self.registry.validate(old)
+
+    def test_replacement_during_current_read_is_refused(self):
+        from universalddns import authorized_observer
+        from universalddns.inventory_snapshot import publish_inventory_snapshot
+        publish_with_authorized_child(self.source, self.target, self.registry)
+        original = authorized_observer.read_consistent_snapshot
+
+        def replace_after_pin(path):
+            old = original(path)
+            publish_inventory_snapshot(self.source, self.target)
+            return old
+
+        with patch.object(authorized_observer, "read_consistent_snapshot",
+                          side_effect=replace_after_pin):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                read_current_authorized_snapshot(self.target, self.registry)
+
+    def test_no_snapshot_or_symlink_fails_closed(self):
+        publish_with_authorized_child(self.source, self.target, self.registry)
+        missing = self.target.with_name("missing.sqlite3")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_current_authorized_snapshot(missing, self.registry)
+        link = self.target.with_name("link.sqlite3")
+        link.symlink_to(self.target.name)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_current_authorized_snapshot(link, self.registry)
 
     def test_invalid_timeout_fails_without_child(self):
         for invalid in (0, -1, float("inf"), "bad", True, 31):
