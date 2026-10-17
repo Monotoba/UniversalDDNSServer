@@ -9,9 +9,13 @@ The `authoritative.status` field defaults to `unavailable`. An optional
 server-side `record_observer` callback may report `matches_template`,
 `differs_from_template`, or `absent`. Observation errors yield `unavailable`,
 never `absent`; no observed addresses, backend errors or secrets are returned.
-The regular runtime **does not yet configure an observation callback**, so
-the initial dashboard correctly displays `unavailable` instead of claiming
-to have independently checked live authoritative DNS.
+The experimental API runtime now configures the existing RFC2136 backend's
+`observe` method as the read-only callback. This issues an authoritative DNS
+query to the configured authoritative server for the permitted RRset, with
+the backend's configured timeout (default five seconds). A non-authoritative
+response, transport failure, or timeout results in `unavailable`, not `absent`.
+Only observation status is returned; address data and TSIG secrets are not.
+No DNS UPDATE is performed by the dashboard.
 
 Template matching compares the configured template RRset to a read-only
 backend observation, **not** a specific update intent's desired address.

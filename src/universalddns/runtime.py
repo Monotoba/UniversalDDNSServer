@@ -178,8 +178,11 @@ def api_app():
         mapping, _ = catalog_snapshot(settings.database, settings.records)
         return mapping
 
+    # RFC2136Backend.observe makes only bounded authoritative DNS queries;
+    # do not expose the publishing backend itself to dashboard routes.
+    observer = RFC2136Backend(settings.dns).observe
     return create_app(journal, orchestrator, settings.records, principals,
-                      record_reader=readable_records)
+                      record_reader=readable_records, record_observer=observer)
 
 
 def main():

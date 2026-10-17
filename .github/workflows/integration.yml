@@ -62,6 +62,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_local_dashboard.py' -v
           python -m unittest discover -s tests -p 'test_recent_intent_history.py' -v
           python -m unittest discover -s tests -p 'test_record_detail_observation.py' -v
+          python -m unittest discover -s tests -p 'test_runtime_dns_observer.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
