@@ -70,7 +70,8 @@ class OwnedListenerTests(unittest.TestCase):
         pid = os.fork()
         if pid == 0:
             try:
-                OwnedUnixListener(self.root)
+                server = OwnedUnixListener(self.root)
+                self.assertGreaterEqual(server.socket.fileno(), 0)
                 os.kill(os.getpid(), signal.SIGKILL)
             except BaseException:
                 os._exit(2)
