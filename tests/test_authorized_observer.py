@@ -9,6 +9,7 @@ from unittest.mock import patch
 from universalddns.authorized_observer import (
     publish_with_authorized_child, read_current_authorized_snapshot,
 )
+from universalddns.ack_frame import encode_ack
 from universalddns.consistent_snapshot import read_consistent_snapshot
 from universalddns.snapshot_issuance import SnapshotIssuanceRegistry
 
@@ -54,7 +55,7 @@ class AuthorizedObserverTests(unittest.TestCase):
 
         def incorrect_ack(source, destination, connection, nonce):
             try:
-                connection.send((nonce, "a" * 32))
+                connection.send_bytes(encode_ack(nonce, "a" * 32))
             finally:
                 connection.close()
 
@@ -70,7 +71,7 @@ class AuthorizedObserverTests(unittest.TestCase):
         from universalddns import authorized_observer
 
         def send_then_fail(source, destination, connection, nonce):
-            connection.send("a" * 32)
+            connection.send_bytes(encode_ack(nonce, "a" * 32))
             connection.close()
             os._exit(61)
 
@@ -88,12 +89,12 @@ class AuthorizedObserverTests(unittest.TestCase):
             with self.subTest(reply=reply):
                 def malicious(source, destination, connection, nonce):
                     if reply == "wrong-nonce":
-                        connection.send(("0" * 64, "a" * 32))
+                        connection.send_bytes(encode_ack("0" * 64, "a" * 32))
                     elif reply == "replay":
                         connection.send((nonce, "a" * 32))
                         connection.send((nonce, "a" * 32))
                     else:
-                        connection.send({"nonce": nonce, "generation": "a" * 32})
+                        connection.send_bytes(b"invalid")
                     connection.close()
 
                 with patch.object(authorized_observer, "_publisher_child",
