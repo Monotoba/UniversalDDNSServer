@@ -1,6 +1,6 @@
 # Implementation plan
 
-Phases are engineering milestones, not release dates. Status reflects reviewed repository implementation and reported test evidence as of 2026-10-16. A checked item describes its specified scope, not production readiness. See [v0.4 alpha release gate](operations/V0_4_ALPHA_RELEASE_CHECKLIST.md) and [changelog](../CHANGELOG.md).
+Phases are engineering milestones, not release dates. Status reflects reviewed repository implementation and reported test evidence as of 2026-10-17 (repository state; lab VM evidence remains dated 2026-10-16). A checked item describes its specified scope, not production readiness. See [v0.5 alpha candidate gate](operations/V0_5_ALPHA_RELEASE_CHECKLIST.md) and [historical v0.4 release gate](operations/V0_4_ALPHA_RELEASE_CHECKLIST.md) and [changelog](../CHANGELOG.md).
 
 ## Phase 0 — design and groundwork
 - [x] Architecture proposal, ADR-0001 and ADR-0002.
@@ -36,7 +36,9 @@ Phases are engineering milestones, not release dates. Status reflects reviewed r
 ## Phase 3 — management
 - [x] Initial local operator roles (POSIX group) and audited credential mutations; SQLite audit is not tamper-evident.
 - [ ] Generalized roles/groups and delegated authorization.
-- [ ] Browser management interface and secure remote administration API.
+- [x] Experimental **local-only read-only** browser dashboard on development `main` (PRs #164–#168): scoped record discovery/details, recent principal-owned intent history, SQL-side status/record filters, page-only counts, and authoritative DNS observation using the configured backend. Bearer `intents:read` remains required for data; dashboard assets require loopback transport. No live VM upgrade was conducted for these PRs.
+- [ ] Authorized record editing and credential administration in the browser; no mutation controls or remote management API are implemented.
+- [ ] Secure remote administration API and production-grade browser authentication/session protections.
 
 ## Phase 4 — plugins
 - [ ] Backend capability negotiation, provider adapters, versioned SDK and contract tests.
@@ -52,3 +54,17 @@ Every functional change needs appropriate tests, docs and CI. Experimental test 
 
 - [x] Migrate development-branch `pyproject.toml` from deprecated license table to PEP 639 SPDX `BSD-2-Clause` and explicit `LICENSE` inclusion, with setuptools build requirement `>=77`. This is a post-release change; the immutable v0.4.0a1 tag and its published artifacts are unchanged.
 - [ ] Verify next development build metadata and LICENSE distribution on supported Python versions; no claim that already-published v0.4.0a1 packages include this change.
+
+## v0.5.0a1 dashboard milestone — candidate, not released (2026-10-17)
+
+- [x] PRs [#164](https://github.com/Monotoba/UniversalDDNSServer/pull/164), [#165](https://github.com/Monotoba/UniversalDDNSServer/pull/165), [#166](https://github.com/Monotoba/UniversalDDNSServer/pull/166), [#167](https://github.com/Monotoba/UniversalDDNSServer/pull/167) and [#168](https://github.com/Monotoba/UniversalDDNSServer/pull/168) merged after five-workflow exact-head gates including Python 3.11–3.13 matrix evidence.
+- [x] Read-only dashboard uses existing scoped bearer authorization; displays only active authorized records and principal-owned recent intents. History is SQL-filtered before page limits, and summaries apply to the displayed page, not all updates.
+- [x] Record-detail endpoint can query the configured authoritative RFC 2136 DNS backend **read-only**. Observation errors report `unavailable`; `matches_template` compares against a configured template and is not proof that a particular intent published successfully.
+- [ ] Align package and FastAPI versions, changelog and draft release notes with a reviewed v0.5.0a1 candidate; `pyproject.toml` and API metadata remain **0.4.0a1** until an explicit candidate implementation is approved.
+- [ ] Validate the new dashboard against an **isolated** BIND/SQLite/API test VM with authorized test credentials, confirmed live read-only DNS observation, negative access cases, and no production settings changes.
+- [ ] Review the dashboard/browser security boundary and API worker credential separation: current runtime constructs `RFC2136Backend(settings.dns)` in the API process and already loads TSIG credentials for other runtime operations. This milestone does not claim a dedicated least-privilege observer identity.
+- [ ] Re-run the five workflows on an exact frozen release candidate SHA; inspect LICENSE and package metadata in both wheel and sdist and review release assets/checksums.
+- [ ] Obtain explicit owner approval before tagging, publishing v0.5.0a1, or deploying to any VM.
+- [ ] Validate the still-unfinished recovery, role delegation, privileged-broker isolation and internet-facing security work separately; v0.5 is **experimental** and not production-ready.
+
+See [v0.5.0a1 release checklist](operations/V0_5_ALPHA_RELEASE_CHECKLIST.md) and [dashboard feature guide](features/LOCAL_READONLY_DASHBOARD.md).

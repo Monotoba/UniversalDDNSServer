@@ -2,6 +2,14 @@
 
 All notable changes are recorded here. Published alpha versions are experimental; no stable release has been published.
 
+## [Unreleased] — v0.5.0a1 dashboard candidate (not tagged or published)
+
+- Experimental loopback-only read-only browser dashboard for authenticated, scoped record discovery, record details and update-intent status.
+- Bounded recent-intent history with principal/record authorization, optional record/status filters, and page-limited status counts.
+- Authoritative DNS observation via existing RFC 2136 backend: template match, differs, absent and unavailable; no DNS update from the dashboard.
+- Expanded Linux/Python 3.11–3.13 tests for the above and isolated SCM_RIGHTS handoff robustness; new release approval and VM validation remain outstanding.
+- **Not included in the existing v0.4.0a1 release.** Package and FastAPI versions remain 0.4.0a1 on development `main` pending an independently reviewed v0.5 candidate.
+
 ## [0.4.0a1] — 2026-10-16 (published experimental prerelease)
 
 - Catalog-managed A/AAAA templates with revision-controlled staging and scoped REST discovery/publication requests.
