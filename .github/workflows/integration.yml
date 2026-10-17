@@ -57,6 +57,7 @@ jobs:
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_pidfd_duplicate_validation.py' -v
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_scm_rights_failure_cleanup.py' -v
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_kernel_scm_rights_truncation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_scm_rights_receive_errors.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
