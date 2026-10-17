@@ -1,5 +1,6 @@
 """Disposable Linux pidfd-gated preserved socket reclamation."""
 import os
+import select
 import signal
 import socket
 import tempfile
@@ -55,7 +56,9 @@ class PidfdSocketReclamationTests(unittest.TestCase):
             self.assertTrue(self.path.exists())
         finally:
             os.kill(pid, signal.SIGKILL)
-            os.waitpid(pid, 0)
+            watcher = select.poll()
+            watcher.register(fd, select.POLLIN)
+            self.assertTrue(watcher.poll(5000))
         try:
             self.assertTrue(reclaim_exited_listener_socket(self.root, identity,
                 expected_pid=pid, listener_pidfd=fd,
@@ -66,6 +69,7 @@ class PidfdSocketReclamationTests(unittest.TestCase):
             with OwnedUnixListener(self.root):
                 pass
         finally:
+            os.waitpid(pid, 0)
             os.close(fd)
 
     def test_unrelated_pidfd_and_invalid_fd_preserve_endpoint(self):
@@ -90,7 +94,9 @@ class PidfdSocketReclamationTests(unittest.TestCase):
     def test_exited_pidfd_cannot_authorize_replacement(self):
         pid, fd, identity = self.spawn()
         os.kill(pid, signal.SIGKILL)
-        os.waitpid(pid, 0)
+        watcher = select.poll()
+        watcher.register(fd, select.POLLIN)
+        self.assertTrue(watcher.poll(5000))
         try:
             self.path.rename(self.root / "old.sock")
             with socket.socket(socket.AF_UNIX) as imposter:
@@ -102,6 +108,7 @@ class PidfdSocketReclamationTests(unittest.TestCase):
                         writer_exclusion_established=True)
                 self.assertEqual(inode, self.path.lstat().st_ino)
         finally:
+            os.waitpid(pid, 0)
             os.close(fd)
 
 
