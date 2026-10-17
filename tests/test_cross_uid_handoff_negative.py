@@ -138,6 +138,88 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                         pass
                     os.waitpid(pid, 0)
 
+
+    def _successful_recovery(self):
+        """Fresh cross-UID session succeeds after rejected transfers."""
+        session = HandoffSession()
+        address = "\x00uddns-recovery-" + uuid.uuid4().hex
+        ready_r, ready_w = os.pipe()
+        observer = os.fork()
+        if observer == 0:
+            os.close(ready_r)
+            try:
+                self._drop(self.OBSERVER)
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                    listener.bind(address)
+                    listener.listen(1)
+                    listener.settimeout(4)
+                    os.write(ready_w, b"R")
+                    os.close(ready_w)
+                    with listener.accept()[0] as peer:
+                        before = len(os.listdir("/proc/self/fd"))
+                        verified = receive_verified_snapshot(
+                            peer, authorized_uid=self.PUBLISHER,
+                            producer_uid=self.PUBLISHER, session=session,
+                            expected_generation=self.expected["generation"],
+                            expected_identity=self.identity)
+                        if (verified["generation"] != self.expected["generation"]
+                                or not session.consumed
+                                or len(os.listdir("/proc/self/fd")) != before):
+                            os._exit(80)
+                        try:
+                            receive_verified_snapshot(
+                                peer, authorized_uid=self.PUBLISHER,
+                                producer_uid=self.PUBLISHER, session=session,
+                                expected_generation=self.expected["generation"])
+                        except ValueError:
+                            os._exit(0)
+                        os._exit(81)
+            except BaseException:
+                os._exit(82)
+        os.close(ready_w)
+        sender = None
+        try:
+            self.assertEqual(os.read(ready_r, 1), b"R")
+            sender = os.fork()
+            if sender == 0:
+                try:
+                    self._drop(self.PUBLISHER)
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                        peer.settimeout(3)
+                        peer.connect(address)
+                        send_snapshot_fd(
+                            peer, self.target, authorized_uid=self.OBSERVER,
+                            session_challenge=session.challenge)
+                    os._exit(0)
+                except BaseException:
+                    os._exit(83)
+            _, status = os.waitpid(sender, 0)
+            sender = None
+            self.assertTrue(os.WIFEXITED(status))
+            self.assertEqual(os.WEXITSTATUS(status), 0)
+            _, status = os.waitpid(observer, 0)
+            observer = None
+            self.assertTrue(os.WIFEXITED(status))
+            self.assertEqual(os.WEXITSTATUS(status), 0)
+        finally:
+            os.close(ready_r)
+            for pid in (sender, observer):
+                if pid is not None:
+                    try:
+                        os.kill(pid, 9)
+                    except ProcessLookupError:
+                        pass
+                    os.waitpid(pid, 0)
+
+    def test_repeated_rejections_crashes_and_fresh_session_recovery(self):
+        """Failures neither leak parent FDs nor poison new sessions."""
+        baseline = len(os.listdir("/proc/self/fd"))
+        for mode in ("wrong-uid", "wrong-challenge", "crash") * 3:
+            self._case(mode)
+            self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+        self._successful_recovery()
+        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+
     def test_wrong_uid_rejected(self):
         self._case("wrong-uid")
 
