@@ -52,11 +52,13 @@ def observer_session(destination: str | Path) -> Iterator[None]:
 def publish_in_observer_session(
     source: str | Path, destination: str | Path,
     registry: SnapshotIssuanceRegistry, *, timeout_seconds: float = 10.0,
+    descriptor_handoff: bool = False,
 ) -> dict[str, object]:
     """Serialize cooperative publication and acknowledgement across processes."""
     with observer_session(destination):
         return publish_with_authorized_child(
-            source, destination, registry, timeout_seconds=timeout_seconds)
+            source, destination, registry, timeout_seconds=timeout_seconds,
+            descriptor_handoff=descriptor_handoff)
 
 
 def read_in_observer_session(
