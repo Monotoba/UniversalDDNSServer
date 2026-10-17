@@ -174,12 +174,20 @@ def _read_supervised_current(destination: str | Path, deadline: float) -> dict[s
         before = target.lstat()
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
             raise ValueError("snapshot unavailable")
-        _require_deadline(deadline)
-        snapshot = verify_snapshot_supervised(
-            target, timeout_seconds=deadline - time.monotonic())
-        after = target.lstat()
-        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
-            raise ValueError("snapshot unavailable")
+        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            pinned = os.fstat(fd)
+            if (before.st_dev, before.st_ino) != (pinned.st_dev, pinned.st_ino):
+                raise ValueError("snapshot unavailable")
+            _require_deadline(deadline)
+            snapshot = verify_snapshot_supervised(
+                target, timeout_seconds=deadline - time.monotonic(), pinned_fd=fd)
+            after = target.lstat()
+            if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+                    or (pinned.st_dev, pinned.st_ino) != (after.st_dev, after.st_ino)):
+                raise ValueError("snapshot unavailable")
+        finally:
+            os.close(fd)
         _require_deadline(deadline)
         return snapshot
     except (OSError, ValueError, TypeError) as exc:

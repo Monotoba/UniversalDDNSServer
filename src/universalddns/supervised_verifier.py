@@ -11,15 +11,16 @@ import uuid
 from pathlib import Path
 
 from .authorized_observer import _read_exact_until
-from .consistent_snapshot import read_consistent_snapshot
+from .consistent_snapshot import read_consistent_snapshot, read_snapshot_fd
 
 _FRAME = struct.Struct("!4s16sqIII")
 _MAGIC = b"UVRF"
 
 
-def _verification_child(path: str, send) -> None:
+def _verification_child(path: str, send, pinned_fd: int | None = None) -> None:
     try:
-        snapshot = read_consistent_snapshot(path)
+        snapshot = (read_consistent_snapshot(path) if pinned_fd is None
+                    else read_snapshot_fd(pinned_fd, trusted_producer_uid=os.geteuid()))
         frame = _FRAME.pack(
             _MAGIC, uuid.UUID(hex=snapshot["generation"]).bytes,
             snapshot["created_at"], snapshot["total_records"],
@@ -33,6 +34,7 @@ def _verification_child(path: str, send) -> None:
 
 def verify_snapshot_supervised(
     path: str | Path, *, timeout_seconds: float = 2.0,
+    pinned_fd: int | None = None,
 ) -> dict[str, object]:
     """Bound one child verification attempt with a parent-enforced deadline.
 
@@ -43,13 +45,21 @@ def verify_snapshot_supervised(
             or type(timeout_seconds) not in (int, float)
             or not 0 < timeout_seconds <= 30):
         raise ValueError("snapshot unavailable")
+    if pinned_fd is not None:
+        if type(pinned_fd) is not int or pinned_fd < 0:
+            raise ValueError("snapshot unavailable")
+        try:
+            os.fstat(pinned_fd)
+        except OSError as exc:
+            raise ValueError("snapshot unavailable") from exc
     deadline = time.monotonic() + timeout_seconds
     parent = child = process = None
     try:
         context = multiprocessing.get_context("fork")
         parent, child = context.Pipe(duplex=False)
-        process = context.Process(
-            target=_verification_child, args=(os.fspath(path), child))
+        args = ((os.fspath(path), child) if pinned_fd is None
+                else (os.fspath(path), child, pinned_fd))
+        process = context.Process(target=_verification_child, args=args)
         process.start()
         child.close()
         child = None
