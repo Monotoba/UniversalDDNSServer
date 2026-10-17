@@ -2,6 +2,7 @@
 import os
 import sqlite3
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -28,6 +29,53 @@ class PublicationAcknowledgementTests(unittest.TestCase):
                 revision INTEGER, active INTEGER)""")
             db.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
                        ("one", "test", "a", "A", 300, "[]", 1, 1))
+
+    def test_overlapping_attempt_is_rejected_without_revoking_inflight(self):
+        from universalddns import publication_ack
+        entered = threading.Event()
+        resume = threading.Event()
+        result = []
+        actual = publication_ack.publish_inventory_snapshot
+
+        def pause_publication(*args, **kwargs):
+            entered.set()
+            if not resume.wait(3):
+                raise RuntimeError("fixture synchronization timed out")
+            return actual(*args, **kwargs)
+
+        def worker():
+            try:
+                result.append(publish_and_acknowledge(
+                    self.source, self.target, self.registry))
+            except BaseException as error:
+                result.append(error)
+
+        with patch.object(publication_ack, "publish_inventory_snapshot",
+                          side_effect=pause_publication):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(3))
+                with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                    publish_and_acknowledge(self.source, self.target, self.registry)
+            finally:
+                resume.set()
+                thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(result), 1)
+        self.assertIsInstance(result[0], dict)
+        self.registry.validate(read_consistent_snapshot(self.target))
+
+    def test_exception_before_ack_keeps_registry_invalidated(self):
+        from universalddns import inventory_snapshot
+        publish_and_acknowledge(self.source, self.target, self.registry)
+        previous = read_consistent_snapshot(self.target)
+        with patch.object(inventory_snapshot.os, "replace",
+                          side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                publish_and_acknowledge(self.source, self.target, self.registry)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            self.registry.validate(previous)
 
     def test_success_issues_exact_committed_generation(self):
         publish_and_acknowledge(self.source, self.target, self.registry)

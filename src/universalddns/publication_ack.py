@@ -1,8 +1,12 @@
 """Isolated, in-process durable-publication to volatile-issuance adapter."""
+import threading
 from pathlib import Path
 
 from .inventory_snapshot import publish_inventory_snapshot
 from .snapshot_issuance import SnapshotIssuanceRegistry
+
+
+_ack_lock = threading.Lock()
 
 
 def publish_and_acknowledge(
@@ -13,11 +17,17 @@ def publish_and_acknowledge(
     For a single authorized publisher process; not safe as an uncoordinated
     multi-threaded observer or an authenticated cross-process protocol.
     """
-    registry.invalidate()
+    # Nonblocking serialization avoids invalidation by an overlapping attempt.
+    if not _ack_lock.acquire(blocking=False):
+        raise ValueError("snapshot unavailable")
     try:
-        return publish_inventory_snapshot(
-            source, destination, on_durable_publication=registry.issue
-        )
-    except BaseException:
         registry.invalidate()
-        raise
+        try:
+            return publish_inventory_snapshot(
+                source, destination, on_durable_publication=registry.issue
+            )
+        except BaseException:
+            registry.invalidate()
+            raise
+    finally:
+        _ack_lock.release()
