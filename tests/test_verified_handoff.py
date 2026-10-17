@@ -5,6 +5,9 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from universalddns import verified_handoff
 
 from universalddns.consistent_snapshot import read_consistent_snapshot
 from universalddns.inventory_snapshot import publish_inventory_snapshot
@@ -58,11 +61,42 @@ class VerifiedHandoffTests(unittest.TestCase):
 
     def test_stale_generation_fails_closed_and_no_fd_leak(self):
         session = HandoffSession()
-        before = len(os.listdir("/proc/self/fd"))
-        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
-            self.transfer(session, expected="a" * 32)
+        captured = []
+        actual_read = verified_handoff.read_snapshot_fd
+
+        def inspect_received(fd, *, trusted_producer_uid):
+            captured.append(fd)
+            return actual_read(fd, trusted_producer_uid=trusted_producer_uid)
+
+        with patch.object(verified_handoff, "read_snapshot_fd",
+                          side_effect=inspect_received):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                self.transfer(session, expected="a" * 32)
         self.assertTrue(session.consumed)
-        self.assertEqual(len(os.listdir("/proc/self/fd")), before)
+        self.assertEqual(len(captured), 1)
+        with self.assertRaises(OSError):
+            os.fstat(captured[0])
+
+    def test_successful_handoff_closes_only_received_descriptor(self):
+        session = HandoffSession()
+        captured = []
+        actual_read = verified_handoff.read_snapshot_fd
+        reference = os.open(self.target, os.O_RDONLY)
+        self.addCleanup(os.close, reference)
+
+        def inspect_received(fd, *, trusted_producer_uid):
+            captured.append(fd)
+            return actual_read(fd, trusted_producer_uid=trusted_producer_uid)
+
+        with patch.object(verified_handoff, "read_snapshot_fd",
+                          side_effect=inspect_received):
+            result = self.transfer(session)
+        self.assertEqual(result["total_records"], 1)
+        self.assertTrue(session.consumed)
+        self.assertEqual(len(captured), 1)
+        with self.assertRaises(OSError):
+            os.fstat(captured[0])
+        self.assertEqual(os.fstat(reference).st_ino, self.target.stat().st_ino)
 
     def test_different_inventories_cannot_substitute_descriptor(self):
         alternate = self.target.with_name("other.sqlite3")
