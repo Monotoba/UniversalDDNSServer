@@ -134,11 +134,12 @@ class PidfdHandoffLifecycleTests(unittest.TestCase):
             reaped = False
             try:
                 with listener.accept()[0] as channel:
-                    count = len(os.listdir("/proc/self/fd"))
+                    received_fds = []
                     actual_read = verified_handoff.read_snapshot_fd
                     invoked = []
 
                     def kill_during_read(fd, *, trusted_producer_uid):
+                        received_fds.append(fd)
                         result = actual_read(
                             fd, trusted_producer_uid=trusted_producer_uid)
                         os.kill(child, signal.SIGKILL)
@@ -160,9 +161,10 @@ class PidfdHandoffLifecycleTests(unittest.TestCase):
                     self.assertTrue(os.WIFSIGNALED(invoked[0]))
                     self.assertEqual(os.WTERMSIG(invoked[0]), signal.SIGKILL)
                     self.assertTrue(session.consumed)
-                    # Other test-owned descriptors may close during peer exit;
-                    # a decrease is not an FD leak.
-                    self.assertLessEqual(len(os.listdir("/proc/self/fd")), count)
+                    # Verify the actual received SCM_RIGHTS descriptor closed.
+                    self.assertEqual(len(received_fds), 1)
+                    with self.assertRaises(OSError):
+                        os.fstat(received_fds[0])
             finally:
                 if not reaped:
                     try:
