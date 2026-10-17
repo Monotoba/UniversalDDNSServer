@@ -6,6 +6,7 @@ protocol; only the parent-created child is authorized in this fixture.
 """
 import multiprocessing
 import os
+import secrets
 import stat
 import threading
 from pathlib import Path
@@ -17,10 +18,10 @@ from .snapshot_issuance import SnapshotIssuanceRegistry
 _observer_lock = threading.Lock()
 
 
-def _publisher_child(source: str, destination: str, connection) -> None:
+def _publisher_child(source: str, destination: str, connection, nonce: str) -> None:
     try:
         def acknowledged(generation: str) -> None:
-            connection.send(generation)
+            connection.send((nonce, generation))
 
         publish_inventory_snapshot(
             source, destination, on_durable_publication=acknowledged)
@@ -50,20 +51,31 @@ def publish_with_authorized_child(
         registry.invalidate()
         context = multiprocessing.get_context("fork")
         parent, child = context.Pipe(duplex=False)
+        nonce = secrets.token_hex(32)
         process = context.Process(
             target=_publisher_child,
-            args=(os.fspath(source), os.fspath(destination), child))
+            args=(os.fspath(source), os.fspath(destination), child, nonce))
         process.start()
         child.close()
         child = None
         if not parent.poll(timeout_seconds):
             raise ValueError("snapshot unavailable")
-        generation = parent.recv()
+        message = parent.recv()
         process.join(timeout_seconds)
         if process.is_alive() or process.exitcode != 0:
             raise ValueError("snapshot unavailable")
-        if type(generation) is not str:
+        if (type(message) is not tuple or len(message) != 2
+                or type(message[0]) is not str or message[0] != nonce
+                or type(message[1]) is not str):
             raise ValueError("snapshot unavailable")
+        generation = message[1]
+        if parent.poll(0):
+            try:
+                parent.recv()
+            except EOFError:
+                pass  # Closed writer is normal; a second payload is not.
+            else:
+                raise ValueError("snapshot unavailable")
         snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
