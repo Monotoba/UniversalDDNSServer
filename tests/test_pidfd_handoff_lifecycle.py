@@ -1,0 +1,116 @@
+"""Live pidfd gates a cross-process descriptor handoff; stale SO_PEERCRED is insufficient."""
+import os
+import socket
+import sqlite3
+import tempfile
+import unittest
+import uuid
+from pathlib import Path
+
+from universalddns.consistent_snapshot import read_consistent_snapshot
+from universalddns.inventory_snapshot import publish_inventory_snapshot
+from universalddns.snapshot_handoff import HandoffSession, send_snapshot_fd
+from universalddns.verified_handoff import receive_verified_snapshot
+
+
+@unittest.skipUnless(os.name == "posix" and hasattr(os, "pidfd_open")
+                     and hasattr(socket, "SO_PEERCRED"),
+                     "requires Linux pidfd and SO_PEERCRED")
+class PidfdHandoffLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        source = root / "source.sqlite3"
+        private = root / "private"
+        private.mkdir(mode=0o700)
+        self.target = private / "snapshot.sqlite3"
+        with sqlite3.connect(source) as db:
+            db.execute("""CREATE TABLE managed_records (
+                record_id TEXT PRIMARY KEY, zone TEXT, name TEXT,
+                record_type TEXT, ttl INTEGER, values_json TEXT,
+                revision INTEGER, active INTEGER)""")
+            db.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
+                       ("one", "test", "a", "A", 300, "[]", 1, 1))
+        publish_inventory_snapshot(source, self.target)
+        self.generation = read_consistent_snapshot(self.target)["generation"]
+        info = self.target.stat()
+        self.identity = (info.st_dev, info.st_ino)
+
+    def exercise(self, *, exited=False, wrong_pidfd=False):
+        session = HandoffSession()
+        address = "\x00uddns-pidfd-" + uuid.uuid4().hex
+        release_read, release_write = os.pipe()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(address)
+            listener.listen(1)
+            listener.settimeout(5)
+            child = os.fork()
+            if child == 0:
+                os.close(release_write)
+                listener.close()
+                try:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                        peer.connect(address)
+                        send_snapshot_fd(peer, self.target,
+                                         authorized_uid=os.geteuid(),
+                                         session_challenge=session.challenge)
+                        os.read(release_read, 1)
+                    os._exit(0)
+                except BaseException:
+                    os._exit(2)
+            os.close(release_read)
+            pidfd = os.pidfd_open(child)
+            other = os.pidfd_open(os.getpid()) if wrong_pidfd else None
+            waited = False
+            try:
+                with listener.accept()[0] as channel:
+                    if exited:
+                        os.write(release_write, b"X")
+                        _, status = os.waitpid(child, 0)
+                        waited = True
+                        self.assertTrue(os.WIFEXITED(status))
+                        self.assertEqual(os.WEXITSTATUS(status), 0)
+                    count = len(os.listdir("/proc/self/fd"))
+                    if exited or wrong_pidfd:
+                        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                            receive_verified_snapshot(
+                                channel, authorized_uid=os.geteuid(),
+                                producer_uid=os.geteuid(), authorized_pid=child,
+                                session=session, expected_generation=self.generation,
+                                expected_identity=self.identity,
+                                peer_pidfd=other if wrong_pidfd else pidfd)
+                        self.assertTrue(session.consumed)
+                    else:
+                        result = receive_verified_snapshot(
+                            channel, authorized_uid=os.geteuid(),
+                            producer_uid=os.geteuid(), authorized_pid=child,
+                            session=session, expected_generation=self.generation,
+                            expected_identity=self.identity, peer_pidfd=pidfd)
+                        self.assertEqual(result["generation"], self.generation)
+                    self.assertEqual(len(os.listdir("/proc/self/fd")), count)
+            finally:
+                if not waited:
+                    try:
+                        os.write(release_write, b"X")
+                    except BrokenPipeError:
+                        pass
+                    _, status = os.waitpid(child, 0)
+                    self.assertTrue(os.WIFEXITED(status))
+                os.close(release_write)
+                os.close(pidfd)
+                if other is not None:
+                    os.close(other)
+
+    def test_live_sender_accepted_with_pinned_pidfd(self):
+        self.exercise()
+
+    def test_exited_sender_rejected_despite_queued_rights(self):
+        self.exercise(exited=True)
+
+    def test_unrelated_live_pidfd_rejected(self):
+        self.exercise(wrong_pidfd=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
