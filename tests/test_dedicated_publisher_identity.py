@@ -104,8 +104,14 @@ class DedicatedPublisherIdentityTests(unittest.TestCase):
             os.kill(os.getpid(), 9)
         _, status = os.waitpid(pid, 0)
         self.assertTrue(os.WIFSIGNALED(status))
-        self.run_as(self.OBSERVER_UID, self.OBSERVER_GID,
-                    lambda: self.assertRaises(PermissionError).__enter__())
+        def observer_denied():
+            try:
+                fd = os.open(self.destination, os.O_WRONLY)
+            except PermissionError:
+                return
+            os.close(fd)
+            raise AssertionError("observer gained write permission after crash")
+        self.run_as(self.OBSERVER_UID, self.OBSERVER_GID, observer_denied)
         self.assertEqual(stat.S_IMODE(self.private.stat().st_mode), 0o700)
         self.publish_as_owner()
 
