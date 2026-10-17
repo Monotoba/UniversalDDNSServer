@@ -17,6 +17,7 @@ release. Do not interpret checked development items as release approval.
 - [ ] Document any differences between the reviewed code SHA, packaged artifact hashes and final immutable tag.
 
 ## Disposable VM verification (not performed in this milestone)
+- [x] Prepare [read-only dashboard VM smoke procedure](V0_5_READONLY_VM_VALIDATION.md) and `deploy/verify-v0.5-dashboard-readonly.sh` without modifying a guest; **preparation is not execution**.
 - [ ] Verify guest identity, isolation, approved backup, and clean lab baseline.
 - [ ] Upgrade only after a **separate explicit authorization**; record exact pre- and post-upgrade Git SHAs and backup path.
 - [ ] Verify dashboard loads via loopback and authenticated read-only discovery/record details/history.
