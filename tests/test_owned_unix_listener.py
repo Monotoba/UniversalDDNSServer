@@ -129,6 +129,45 @@ class OwnedListenerTests(unittest.TestCase):
             os.fstat(pinned)
         self.assertFalse(self.path.exists())
 
+    def test_preserve_policy_does_not_unlink_valid_socket(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        server.close()
+        self.assertTrue(self.path.exists())
+        self.assertEqual(server.socket.fileno(), -1)
+        self.path.unlink()
+        with OwnedUnixListener(self.root):
+            pass
+
+    def test_preserve_policy_does_not_unlink_adversarial_replacement(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        replaced = self.root / "original.sock"
+        self.path.rename(replaced)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as attacker:
+            attacker.bind(str(self.path))
+            attacker.listen(1)
+            identity = self.path.lstat()
+            server.close()
+            after = self.path.lstat()
+            self.assertEqual((after.st_dev, after.st_ino),
+                             (identity.st_dev, identity.st_ino))
+        self.path.unlink()
+        replaced.unlink()
+
+    def test_preserve_policy_rejects_invalid_selection(self):
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            OwnedUnixListener(self.root, cleanup_policy="force")
+        self.assertFalse(self.path.exists())
+
+    def test_preserve_policy_remains_safe_with_repeated_close(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        fd = server._dirfd
+        server.close()
+        server.close()
+        with self.assertRaises(OSError):
+            os.fstat(fd)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
     def test_reject_insecure_directory(self):
         self.root.chmod(0o755)
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):

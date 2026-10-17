@@ -13,10 +13,13 @@ from .bounded_unix_listener import BoundedUnixListener
 
 
 class OwnedUnixListener:
-    def __init__(self, parent: str | Path, name: str = "ipc.sock"):
+    def __init__(self, parent: str | Path, name: str = "ipc.sock", *,
+                 cleanup_policy: str = "owned-path"):
         directory = Path(parent)
-        if name != "ipc.sock":
+        if (name != "ipc.sock"
+                or cleanup_policy not in ("owned-path", "preserve")):
             raise ValueError("snapshot unavailable")
+        self._cleanup_policy = cleanup_policy
         self._directory = directory
         self._name = name
         self._dirfd = None
@@ -56,6 +59,11 @@ class OwnedUnixListener:
             return
         try:
             self.listener.close()
+            # Linux provides no atomic unlink-if-inode-matches operation.
+            # Preserve mode deliberately leaves the endpoint for an
+            # independently trusted owner to reclaim after shutdown.
+            if self._cleanup_policy == "preserve":
+                return
             parent = self._directory.lstat()
             pinned = os.fstat(self._dirfd)
             if (not stat.S_ISDIR(parent.st_mode)
