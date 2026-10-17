@@ -1,11 +1,15 @@
 """Live pidfd gates a cross-process descriptor handoff; stale SO_PEERCRED is insufficient."""
 import os
+import signal
 import socket
 import sqlite3
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
+
+from universalddns import verified_handoff
 
 from universalddns.consistent_snapshot import read_consistent_snapshot
 from universalddns.inventory_snapshot import publish_inventory_snapshot
@@ -101,6 +105,73 @@ class PidfdHandoffLifecycleTests(unittest.TestCase):
                 os.close(pidfd)
                 if other is not None:
                     os.close(other)
+
+    def test_sender_killed_during_pinned_verification_fails_and_recovers(self):
+        """Synchronize termination inside the actual descriptor-read stage."""
+        session = HandoffSession()
+        address = "\x00uddns-mid-read-" + uuid.uuid4().hex
+        release_read, release_write = os.pipe()
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(address)
+            listener.listen(1)
+            listener.settimeout(5)
+            child = os.fork()
+            if child == 0:
+                os.close(release_write)
+                listener.close()
+                try:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                        peer.connect(address)
+                        send_snapshot_fd(
+                            peer, self.target, authorized_uid=os.geteuid(),
+                            session_challenge=session.challenge)
+                        os.read(release_read, 1)
+                    os._exit(0)
+                except BaseException:
+                    os._exit(2)
+            os.close(release_read)
+            pidfd = os.pidfd_open(child)
+            reaped = False
+            try:
+                with listener.accept()[0] as channel:
+                    count = len(os.listdir("/proc/self/fd"))
+                    actual_read = verified_handoff.read_snapshot_fd
+                    invoked = []
+
+                    def kill_during_read(fd, *, trusted_producer_uid):
+                        result = actual_read(
+                            fd, trusted_producer_uid=trusted_producer_uid)
+                        os.kill(child, signal.SIGKILL)
+                        _, status = os.waitpid(child, 0)
+                        invoked.append(status)
+                        return result
+
+                    with patch.object(verified_handoff, "read_snapshot_fd",
+                                      side_effect=kill_during_read):
+                        with self.assertRaisesRegex(
+                                ValueError, "^snapshot unavailable$"):
+                            receive_verified_snapshot(
+                                channel, authorized_uid=os.geteuid(),
+                                producer_uid=os.geteuid(), authorized_pid=child,
+                                session=session, expected_generation=self.generation,
+                                expected_identity=self.identity, peer_pidfd=pidfd)
+                    reaped = True
+                    self.assertEqual(len(invoked), 1)
+                    self.assertTrue(os.WIFSIGNALED(invoked[0]))
+                    self.assertEqual(os.WTERMSIG(invoked[0]), signal.SIGKILL)
+                    self.assertTrue(session.consumed)
+                    self.assertEqual(len(os.listdir("/proc/self/fd")), count)
+            finally:
+                if not reaped:
+                    try:
+                        os.kill(child, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    os.waitpid(child, 0)
+                os.close(release_write)
+                os.close(pidfd)
+        # A new socket, PID and session must remain usable after the failure.
+        self.exercise()
 
     def test_live_sender_accepted_with_pinned_pidfd(self):
         self.exercise()
