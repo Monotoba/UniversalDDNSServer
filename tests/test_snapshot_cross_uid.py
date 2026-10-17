@@ -39,7 +39,7 @@ class CrossUidSnapshotTests(unittest.TestCase):
                            ("one", "test", "a", "A", 300, "[]", 1, 1))
             publish_inventory_snapshot(live, snapshot)
 
-            address = "\\x00uddns-acceptance-" + uuid.uuid4().hex
+            address = "\x00uddns-acceptance-" + uuid.uuid4().hex
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                 listener.bind(address)
                 listener.listen(1)
