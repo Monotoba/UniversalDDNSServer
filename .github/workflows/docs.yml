@@ -19,3 +19,6 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Run tests
         run: timeout --signal=TERM --kill-after=5s 180s python -u -m unittest discover -s tests -v
+      - name: Cross-UID snapshot handoff (privileged isolated fixture)
+        if: matrix.python-version == '3.12'
+        run: timeout --signal=TERM --kill-after=5s 30s sudo -E "$(command -v python)" -u -m unittest discover -s tests -p test_snapshot_cross_uid.py -v
