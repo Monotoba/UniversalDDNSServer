@@ -70,7 +70,12 @@ def publish_with_authorized_child(
             raise ValueError("snapshot unavailable")
         generation = message[1]
         if parent.poll(0):
-            raise ValueError("snapshot unavailable")
+            try:
+                parent.recv()
+            except EOFError:
+                pass  # Closed writer is normal; a second payload is not.
+            else:
+                raise ValueError("snapshot unavailable")
         snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
