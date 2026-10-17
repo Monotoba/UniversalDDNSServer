@@ -37,10 +37,12 @@ class PinnedVerifierTests(unittest.TestCase):
         try:
             first = verify_snapshot_supervised(self.path, pinned_fd=fd)
             publish_inventory_snapshot(self.source, self.path)
-            original = verify_snapshot_supervised(self.path, pinned_fd=fd)
+            # The old inode is now unlinked; read_snapshot_fd refuses
+            # its link-count-zero metadata even though the FD is pinned.
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                verify_snapshot_supervised(self.path, pinned_fd=fd)
             current = verify_snapshot_supervised(self.path)
-            self.assertEqual(first["generation"], original["generation"])
-            self.assertNotEqual(original["generation"], current["generation"])
+            self.assertNotEqual(first["generation"], current["generation"])
         finally:
             os.close(fd)
 
