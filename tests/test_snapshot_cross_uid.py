@@ -113,7 +113,7 @@ class CrossUidSnapshotTests(unittest.TestCase):
                            ("one", "test", "a", "A", 300, "[]", 1, 1))
             os.chown(live, PRODUCER_UID, PRODUCER_GID)
             os.chmod(live, 0o600)
-            address = "\\x00uddns-nonroot-" + uuid.uuid4().hex
+            address = "\x00uddns-nonroot-" + uuid.uuid4().hex
             producer = os.fork()
             if producer == 0:
                 try:
@@ -130,7 +130,7 @@ class CrossUidSnapshotTests(unittest.TestCase):
                             send_snapshot_fd(channel, private / "inventory.sqlite3",
                                              authorized_uid=READER_UID)
                     os._exit(0)
-                except BaseException as exc:
+                except BaseException:
                     import traceback
                     traceback.print_exc()
                     os._exit(1)
