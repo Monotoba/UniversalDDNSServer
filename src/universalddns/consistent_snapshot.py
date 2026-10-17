@@ -60,14 +60,16 @@ def read_snapshot_fd(fd: int, *, trusted_producer_uid: int) -> dict[str, object]
         deadline = time.monotonic() + READ_DEADLINE_SECONDS
         chunks = []
         remaining = info.st_size
+        offset = 0
         while remaining:
             if time.monotonic() >= deadline:
                 raise ValueError("snapshot unavailable")
-            block = os.read(fd, min(65536, remaining))
+            block = os.pread(fd, min(65536, remaining), offset)
             if not block:
                 raise ValueError("snapshot unavailable")
             chunks.append(block)
             remaining -= len(block)
+            offset += len(block)
         after = os.fstat(fd)
         if (time.monotonic() >= deadline or after.st_size != info.st_size
                 or after.st_mtime_ns != info.st_mtime_ns
