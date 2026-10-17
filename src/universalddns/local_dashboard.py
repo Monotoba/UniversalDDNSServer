@@ -42,6 +42,14 @@ token. Updates and administration are not available here.</p>
 <table><caption>Records available to this credential</caption>
 <thead><tr><th>ID</th><th>DNS name</th><th>Type</th><th>TTL (seconds)</th></tr></thead>
 <tbody id="records"></tbody></table>
+<h2>Record details and DNS observation</h2>
+<label for="detail-id">Permitted record ID</label>
+<input id="detail-id" type="text" autocomplete="off">
+<button id="detail-load" type="button">Inspect record</button>
+<p id="detail-status" role="status" aria-live="polite"></p>
+<dl id="detail-results"></dl>
+<p>DNS observation is unavailable unless a trusted read-only observer is configured.
+A matching template is not proof that a particular update intent succeeded.</p>
 <h2>Recent update intents</h2>
 <p>Newest 20 updates owned by this credential for records it can currently access.</p>
 <label for="history-record">Record ID (optional)</label>
@@ -105,6 +113,36 @@ SCRIPT = """'use strict';
       setMessage(message, data.records.length + ' permitted record(s).');
     } catch (error) { setMessage(message, error.message); }
   });
+  byId('detail-load').addEventListener('click', async () => {
+    const details = byId('detail-results');
+    details.replaceChildren();
+    setMessage(byId('detail-status'), 'Loading…');
+    const id = byId('detail-id').value.trim();
+    if (!id) {
+      setMessage(byId('detail-status'), 'Enter a permitted record ID.');
+      return;
+    }
+    try {
+      const data = await query('/api/v1/records/' + encodeURIComponent(id));
+      const record = data.record || {};
+      const fields = [
+        ['Record ID', record.id], ['Zone', record.zone],
+        ['Name', record.name], ['Type', record.type],
+        ['TTL (seconds)', record.ttl],
+        ['Authoritative DNS observation', (data.authoritative || {}).status || 'unavailable']
+      ];
+      for (const [name, value] of fields) {
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = name;
+        dd.textContent = String(value ?? '');
+        details.append(dt, dd);
+      }
+      setMessage(byId('detail-status'), 'Record details retrieved.');
+    } catch (error) {
+      setMessage(byId('detail-status'), error.message);
+    }
+  });
   byId('history-load').addEventListener('click', async () => {
     clearHistory();
     setMessage(byId('history-overview'), '');
@@ -151,6 +189,9 @@ SCRIPT = """'use strict';
   byId('clear').addEventListener('click', () => {
     byId('token').value = '';
     byId('intent').value = '';
+    byId('detail-id').value = '';
+    byId('detail-results').replaceChildren();
+    setMessage(byId('detail-status'), '');
     clearRows();
     clearHistory();
     byId('history-record').value = '';
