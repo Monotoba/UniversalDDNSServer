@@ -1,7 +1,4 @@
 """Real kernel EMFILE behavior in a disposable RLIMIT_NOFILE subprocess."""
-import os
-import resource
-import socket
 import subprocess
 import sys
 import textwrap
