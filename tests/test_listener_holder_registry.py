@@ -59,7 +59,8 @@ class HolderRegistryContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "listener exit unverified"):
                 self.registry.reclaim(".", (1, 2), owner_pid=self.pid,
                                       writer_exclusion_established=True)
-            self.assertEqual(os.fstat(owned).st_ino, os.fstat(owned).st_ino)
+            with open(f"/proc/self/fdinfo/{owned}", encoding="ascii") as record:
+                self.assertIn(f"Pid:\t{self.pid}", record.read())
         # Restore an open fd for cleanup registered by setUp.
         os.dup2(owned, self.source_fd)
 
