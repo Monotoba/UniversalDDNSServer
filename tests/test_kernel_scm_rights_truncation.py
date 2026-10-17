@@ -6,7 +6,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from universalddns.snapshot_handoff import receive_snapshot_fd
 
