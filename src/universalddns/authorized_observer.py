@@ -44,6 +44,7 @@ def publish_with_authorized_child(
     if not _observer_lock.acquire(blocking=False):
         raise ValueError("snapshot unavailable")
     parent = child = process = None
+    succeeded = False
     try:
         registry.invalidate()
         context = multiprocessing.get_context("fork")
@@ -66,7 +67,9 @@ def publish_with_authorized_child(
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
         registry.issue(generation)
-        return registry.validate(snapshot)
+        validated = registry.validate(snapshot)
+        succeeded = True
+        return validated
     except (OSError, EOFError, ValueError, TypeError) as exc:
         raise ValueError("snapshot unavailable") from exc
     finally:
@@ -78,5 +81,6 @@ def publish_with_authorized_child(
             child.close()
         if parent is not None:
             parent.close()
-        registry.invalidate() if process is None or process.exitcode != 0 else None
+        if not succeeded:
+            registry.invalidate()
         _observer_lock.release()
