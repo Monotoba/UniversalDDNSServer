@@ -3,7 +3,6 @@
 Session state and trust issuance remain parent-controlled; these frames are
 not independently authenticated publication or durable issuance evidence.
 """
-import os
 import socket
 
 from .peer_lifecycle import require_live_peer_pidfd
