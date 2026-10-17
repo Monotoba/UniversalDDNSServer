@@ -56,7 +56,8 @@ class RuntimeAuthoritativeObserverTests(unittest.TestCase):
             patch.object(runtime, "RFC2136Backend", Backend),
         ):
             app = runtime.api_app()
-        with TestClient(app) as client:
+        with patch.object(runtime, "catalog_snapshot",
+                          return_value=({"host": rrset}, (principal,))), TestClient(app) as client:
             response = client.get("/api/v1/records/host",
                                   headers={"Authorization": "Bearer " + token})
             self.assertEqual(response.status_code, 200)
