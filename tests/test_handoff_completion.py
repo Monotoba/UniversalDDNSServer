@@ -62,6 +62,9 @@ class CompletionHandshakeTests(unittest.TestCase):
                             os._exit(0)
                         if mode == "silent":
                             time.sleep(3)
+                        elif mode == "oversized":
+                            channel.recv(33)
+                            channel.sendall(b"A" + session.challenge + b"EXTRA")
                         elif mode == "replay":
                             channel.recv(33)
                             channel.sendall(b"A" + b"0" * 32)
@@ -123,6 +126,15 @@ class CompletionHandshakeTests(unittest.TestCase):
                 if not reaped:
                     os.waitpid(pid, 0)
                 os.close(pidfd)
+
+    def test_oversized_completion_frame_rejected(self):
+        self.scenario("oversized", deadline_seconds=1.5)
+
+    def test_repeated_oversized_and_timeout_recover(self):
+        for _ in range(3):
+            self.scenario("oversized", deadline_seconds=1.5)
+            self.scenario("drip", deadline_seconds=0.25)
+        self.scenario("ok", deadline_seconds=1.5)
 
     def test_fragmented_completion_within_deadline_succeeds(self):
         self.scenario("fragment", deadline_seconds=1.5)
