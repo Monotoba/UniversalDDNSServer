@@ -256,6 +256,33 @@ def create_app(
             time.sleep(0.1)
         return answer("911")
 
+    @app.get("/api/v1/intents")
+    def recent_intents(request: Request, limit: int = 20,
+                       authorization: str | None = Header(default=None)):
+        """List at most 50 newest intents owned by the principal, for visible RRsets."""
+        principal = authenticated(request, authorization, "intents:read")
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise HTTPException(422, "invalid history limit")
+        try:
+            visible_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="recent_intents")
+            raise HTTPException(503, "catalog view unavailable") from exc
+        keys_to_ids = {
+            record.key: record_id for record_id, record in visible_records.items()
+            if record_id in principal.record_ids
+        }
+        if len(keys_to_ids) > 200:
+            raise HTTPException(503, "history view unavailable")
+        with journal_factory() as journal:
+            rows = journal.recent_for_principal(
+                principal.identifier, tuple(keys_to_ids), limit=limit)
+        return {"intents": [
+            {"intent_id": identifier, "record_id": keys_to_ids[(zone, name, kind)],
+             "status": state, "created_at": created_at}
+            for identifier, zone, name, kind, state, created_at in rows
+        ]}
+
     @app.get("/api/v1/intents/{intent_id}")
     def status(intent_id: str, request: Request,
                authorization: str | None = Header(default=None)):
