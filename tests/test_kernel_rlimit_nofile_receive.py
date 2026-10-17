@@ -22,45 +22,48 @@ _CHILD = textwrap.dedent("""
         with tx, rx:
             original = os.open(path, os.O_RDONLY)
             try:
-                tx.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
-                                      array.array("i", [original]).tobytes())])
                 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-                # Lower only this disposable process' soft limit.
                 current = len(os.listdir("/proc/self/fd"))
                 limit = max(current + 4, 32)
                 if limit >= soft:
                     raise RuntimeError("insufficient RLIMIT headroom")
                 resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
-                extras = []
-                while True:
+                for cycle in range(4):
+                    tx.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                          array.array("i", [original]).tobytes())])
+                    extras = []
+                    while True:
+                        try:
+                            extras.append(os.open(os.devnull, os.O_RDONLY))
+                        except OSError as exc:
+                            if exc.errno != errno.EMFILE:
+                                raise
+                            break
                     try:
-                        extras.append(os.open(os.devnull, os.O_RDONLY))
-                    except OSError as exc:
-                        if exc.errno != errno.EMFILE:
-                            raise
-                        break
-                try:
+                        try:
+                            receive_snapshot_fd(
+                                rx, authorized_uid=os.geteuid(),
+                                producer_uid=os.geteuid())
+                        except ValueError as exc:
+                            if str(exc) != "handoff unavailable":
+                                raise
+                        else:
+                            raise AssertionError("kernel EMFILE must fail closed")
+                    finally:
+                        for fd in extras:
+                            os.close(fd)
+                    tx.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                          array.array("i", [original]).tobytes())])
+                    recovered = receive_snapshot_fd(
+                        rx, authorized_uid=os.geteuid(),
+                        producer_uid=os.geteuid())
                     try:
-                        receive_snapshot_fd(
-                            rx, authorized_uid=os.geteuid(),
-                            producer_uid=os.geteuid())
-                    except ValueError as exc:
-                        if str(exc) != "handoff unavailable":
-                            raise
-                    else:
-                        raise AssertionError("kernel EMFILE must fail closed")
-                finally:
-                    # Restore capacity before exercising a new transfer.
-                    for fd in extras:
-                        os.close(fd)
-                tx.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
-                                      array.array("i", [original]).tobytes())])
-                recovered = receive_snapshot_fd(
-                    rx, authorized_uid=os.geteuid(), producer_uid=os.geteuid())
-                try:
-                    assert os.read(recovered, 32) == b"fixture"
-                finally:
-                    os.close(recovered)
+                        assert os.pread(recovered, 32, 0) == b"fixture"
+                    finally:
+                        os.close(recovered)
+                    # The reference FD and original socketpair remain usable.
+                    assert os.fstat(original).st_ino == path.stat().st_ino
+                    print(f"PASS: cycle {cycle + 1} EMFILE and recovery")
                 print("PASS: kernel EMFILE rejected and later transfer recovered")
             finally:
                 os.close(original)
