@@ -211,6 +211,37 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                         pass
                     os.waitpid(pid, 0)
 
+    def test_generation_rollover_requires_fresh_authorized_expectations(self):
+        """New bytes cannot be trusted using the preceding generation/inode."""
+        baseline = len(os.listdir("/proc/self/fd"))
+        old_generation = self.expected["generation"]
+        old_identity = self.identity
+        self._fork_owner(lambda: publish_inventory_snapshot(
+            self.source, self.target))
+        current = read_consistent_snapshot(
+            self.target, trusted_producer_uid=self.PUBLISHER)
+        details = self.target.stat()
+        current_identity = (details.st_dev, details.st_ino)
+        self.assertNotEqual(old_generation, current["generation"])
+        self.assertNotEqual(old_identity, current_identity)
+
+        # A legitimate sender's current descriptor is not sufficient when
+        # the observer still trusts the previous publication.
+        self._case("normal")
+        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+
+        # Matching generation alone is insufficient when inode continuity
+        # belongs to the preceding authorized publication.
+        self.expected = current
+        self._case("normal")
+        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+
+        # Fresh independently observed generation AND inode permit a new
+        # single-use authenticated cross-UID session.
+        self.identity = current_identity
+        self._successful_recovery()
+        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+
     def test_repeated_rejections_crashes_and_fresh_session_recovery(self):
         """Failures neither leak parent FDs nor poison new sessions."""
         baseline = len(os.listdir("/proc/self/fd"))
