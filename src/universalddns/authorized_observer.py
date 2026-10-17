@@ -69,6 +69,7 @@ def publish_with_authorized_child(
     source: str | Path, destination: str | Path,
     registry: SnapshotIssuanceRegistry, *, timeout_seconds: float = 10.0,
     supervised_verification: bool = False,
+    descriptor_handoff: bool = False,
 ) -> dict[str, object]:
     """Issue only after a known child succeeds and bytes match its acknowledgement.
 
@@ -79,6 +80,8 @@ def publish_with_authorized_child(
     if os.name != "posix" or not hasattr(os, "fork"):
         raise ValueError("snapshot unavailable")
     if type(timeout_seconds) not in (float, int) or not 0 < timeout_seconds <= 30:
+        raise ValueError("snapshot unavailable")
+    if type(descriptor_handoff) is not bool:
         raise ValueError("snapshot unavailable")
     if type(supervised_verification) is not bool:
         raise ValueError("snapshot unavailable")
@@ -114,6 +117,12 @@ def publish_with_authorized_child(
             snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
+        _require_deadline(deadline)
+        if descriptor_handoff:
+            from .authorized_handoff_chain import verify_authorized_handoff
+            handed = verify_authorized_handoff(destination, generation, deadline)
+            if handed != snapshot:
+                raise ValueError("snapshot unavailable")
         _require_deadline(deadline)
         registry.issue(generation)
         if supervised_verification:
