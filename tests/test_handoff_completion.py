@@ -1,0 +1,128 @@
+"""Real forked sender tests for optional session-bound completion exchange."""
+import os
+import socket
+import tempfile
+import unittest
+import uuid
+from pathlib import Path
+
+from universalddns.handoff_completion import (
+    acknowledge_verified_handoff, receive_completed_snapshot,
+)
+from universalddns.inventory_snapshot import publish_inventory_snapshot
+from universalddns.consistent_snapshot import read_consistent_snapshot
+from universalddns.snapshot_handoff import HandoffSession, send_snapshot_fd
+import sqlite3
+
+
+@unittest.skipUnless(hasattr(os, "pidfd_open") and hasattr(socket, "SO_PEERCRED"),
+                     "requires Linux pidfd and peer credentials")
+class CompletionHandshakeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        source = root / "source.sqlite3"
+        private = root / "private"
+        private.mkdir(mode=0o700)
+        self.snapshot = private / "snapshot.sqlite3"
+        with sqlite3.connect(source) as db:
+            db.execute("""CREATE TABLE managed_records (
+                record_id TEXT PRIMARY KEY, zone TEXT, name TEXT,
+                record_type TEXT, ttl INTEGER, values_json TEXT,
+                revision INTEGER, active INTEGER)""")
+            db.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
+                       ("one", "test", "a", "A", 300, "[]", 1, 1))
+        publish_inventory_snapshot(source, self.snapshot)
+        self.generation = read_consistent_snapshot(self.snapshot)["generation"]
+        info = self.snapshot.stat()
+        self.identity = (info.st_dev, info.st_ino)
+
+    def scenario(self, mode):
+        session = HandoffSession()
+        address = "\x00uddns-ack-" + uuid.uuid4().hex
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(address)
+            listener.listen(1)
+            listener.settimeout(5)
+            pid = os.fork()
+            if pid == 0:
+                listener.close()
+                try:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as channel:
+                        channel.connect(address)
+                        send_snapshot_fd(channel, self.snapshot,
+                                         authorized_uid=os.geteuid(),
+                                         session_challenge=session.challenge)
+                        if mode == "crash":
+                            os._exit(0)
+                        if mode == "silent":
+                            import time
+                            time.sleep(3)
+                        elif mode == "replay":
+                            channel.recv(33)
+                            channel.sendall(b"A" + b"0" * 32)
+                        else:
+                            acknowledge_verified_handoff(
+                                channel, challenge=session.challenge)
+                    os._exit(0)
+                except BaseException:
+                    os._exit(2)
+            pidfd = os.pidfd_open(pid)
+            reaped = False
+            try:
+                with listener.accept()[0] as channel:
+                    channel.settimeout(2)
+                    before = len(os.listdir("/proc/self/fd"))
+                    if mode == "ok":
+                        value = receive_completed_snapshot(
+                            channel, authorized_uid=os.geteuid(),
+                            producer_uid=os.geteuid(), authorized_pid=pid,
+                            session=session, expected_generation=self.generation,
+                            expected_identity=self.identity, peer_pidfd=pidfd)
+                        self.assertEqual(value["generation"], self.generation)
+                    else:
+                        with self.assertRaisesRegex(
+                                ValueError, "^snapshot unavailable$"):
+                            receive_completed_snapshot(
+                                channel, authorized_uid=os.geteuid(),
+                                producer_uid=os.geteuid(), authorized_pid=pid,
+                                session=session, expected_generation=self.generation,
+                                expected_identity=self.identity, peer_pidfd=pidfd)
+                    self.assertTrue(session.consumed)
+                    self.assertLessEqual(len(os.listdir("/proc/self/fd")), before)
+                    with self.assertRaisesRegex(
+                            ValueError, "^snapshot unavailable$"):
+                        receive_completed_snapshot(
+                            channel, authorized_uid=os.geteuid(),
+                            producer_uid=os.geteuid(), authorized_pid=pid,
+                            session=session, expected_generation=self.generation,
+                            expected_identity=self.identity, peer_pidfd=pidfd)
+            finally:
+                try:
+                    os.kill(pid, 9)
+                except ProcessLookupError:
+                    pass
+                if not reaped:
+                    os.waitpid(pid, 0)
+                os.close(pidfd)
+
+    def test_success_then_consumed_replay_rejected(self):
+        self.scenario("ok")
+
+    def test_incorrect_completion_echo_rejected(self):
+        self.scenario("replay")
+
+    def test_missing_completion_times_out(self):
+        self.scenario("silent")
+
+    def test_exited_sender_cannot_complete(self):
+        self.scenario("crash")
+
+    def test_new_session_recovers_after_failed_completion(self):
+        self.scenario("replay")
+        self.scenario("ok")
+
+
+if __name__ == "__main__":
+    unittest.main()
