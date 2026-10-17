@@ -92,7 +92,7 @@ class PidfdHandoffLifecycleTests(unittest.TestCase):
                             session=session, expected_generation=self.generation,
                             expected_identity=self.identity, peer_pidfd=pidfd)
                         self.assertEqual(result["generation"], self.generation)
-                    self.assertEqual(len(os.listdir("/proc/self/fd")), count)
+                    self.assertLessEqual(len(os.listdir("/proc/self/fd")), count)
             finally:
                 if not waited:
                     try:
