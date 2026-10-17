@@ -6,6 +6,10 @@ Directory mode 0700 cannot exclude another same-UID writer.
 import os
 import stat
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .owned_unix_listener import OwnedUnixListener
 
 
 def reclaim_preserved_socket(parent: str | Path, expected_identity: tuple[int, int], *,
@@ -43,3 +47,26 @@ def reclaim_preserved_socket(parent: str | Path, expected_identity: tuple[int, i
         return True
     finally:
         os.close(fd)
+
+
+def reclaim_closed_owned_listener(listener: "OwnedUnixListener", *,
+                                  writer_exclusion_established: bool = False) -> bool:
+    """Reclaim only after a locally supervised preserve-mode listener has closed.
+
+    This confirms the supplied Python listener has shut down its own sockets;
+    it does NOT prove that other processes have exited or exclude other writers.
+    Writer exclusion remains an independently enforced caller obligation.
+    """
+    from .owned_unix_listener import OwnedUnixListener
+
+    if type(listener) is not OwnedUnixListener:
+        raise ValueError("supervised listener required")
+    if (listener._cleanup_policy != "preserve"
+            or listener._dirfd is not None
+            or listener.socket is None
+            or listener.socket.fileno() != -1
+            or listener._identity is None):
+        raise ValueError("listener not safely closed")
+    return reclaim_preserved_socket(
+        listener._directory, listener._identity,
+        writer_exclusion_established=writer_exclusion_established)
