@@ -16,6 +16,7 @@ from .audit import audit
 from .adapters.sqlite_intents import SQLiteIntentJournal
 from .domain import RecordSet
 from .intents import UpdateConflict, UnknownIntent
+from .local_dashboard import dashboard, dashboard_script
 from .orchestrator import UpdateOrchestrator
 
 _KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -105,6 +106,10 @@ def create_app(
             raise HTTPException(403, "insufficient scope")
         request.state.principal_id = identity.identifier
         return identity
+
+    app.add_api_route("/dashboard", dashboard, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/dashboard/app.js", dashboard_script,
+                      methods=["GET"], include_in_schema=False)
 
     @app.get("/health/live")
     def live():

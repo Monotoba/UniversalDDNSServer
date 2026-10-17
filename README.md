@@ -37,6 +37,10 @@ These features are in the **published v0.4.0a1 alpha**, but **not** in the older
 
 **Security and operational boundary:** The credential management CLI requires a non-root POSIX user authorized through the `universalddns-operators` group. It must also have filesystem/database permissions granted by the host administrator; group membership alone does not grant access to SQLite or protected config files. Public HTTP credential administration and production internet-facing service are **not** supported. See [v0.4 local operator and upgrade guide](docs/operations/V0_4_LOCAL_OPERATOR_UPGRADE.md).
 
+## Experimental local dashboard
+
+A **local-only, read-only** browser dashboard is available at `http://127.0.0.1:8765/dashboard` when the loopback API is running. It uses an existing `intents:read` bearer token to show only permitted active records and to check the status of a known intent ID. It does not provide record editing, enumerate pending intents, or administer credentials. See [local dashboard guide](docs/features/LOCAL_READONLY_DASHBOARD.md). This feature is on development `main` and not part of previously published alpha packages.
+
 ## Test the core
 
 ```sh
