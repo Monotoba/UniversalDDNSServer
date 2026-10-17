@@ -60,6 +60,31 @@ class OwnedListenerTests(unittest.TestCase):
         with OwnedUnixListener(self.root):
             pass
 
+    def test_replaced_parent_directory_cannot_redirect_shutdown_unlink(self):
+        server = OwnedUnixListener(self.root)
+        original = self.root.with_name(self.root.name + "-original")
+        self.root.rename(original)
+        self.root.mkdir(mode=0o700)
+        replacement = self.root / "ipc.sock"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as impostor:
+            impostor.bind(str(replacement))
+            impostor.listen(1)
+            server.close()
+            self.assertTrue(replacement.exists())
+        replacement.unlink()
+        self.root.rmdir()
+        original.rename(self.root)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
+    def test_parent_permissions_changed_prevent_shutdown_unlink(self):
+        server = OwnedUnixListener(self.root)
+        self.root.chmod(0o755)
+        server.close()
+        self.assertTrue(self.path.exists())
+        self.root.chmod(0o700)
+        self.path.unlink()
+
     def test_reject_insecure_directory(self):
         self.root.chmod(0o755)
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
