@@ -155,7 +155,7 @@ class CrossUidSnapshotTests(unittest.TestCase):
                             try:
                                 client.connect(address)
                                 break
-                            except ConnectionRefusedError:
+                            except (ConnectionRefusedError, FileNotFoundError):
                                 if attempt == 69:
                                     raise
                                 time.sleep(0.05)
