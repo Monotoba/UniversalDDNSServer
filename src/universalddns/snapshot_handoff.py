@@ -4,6 +4,7 @@ No listening socket, broker command, service or deployment integration.
 Caller must authenticate the peer before sending any descriptor.
 """
 import array
+import fcntl
 import os
 import socket
 import stat
@@ -11,6 +12,7 @@ import struct
 from pathlib import Path
 
 _MAX_MESSAGE = 1
+HANDOFF_TIMEOUT_SECONDS = 2.0
 _CREDENTIALS = struct.Struct("3i")
 
 
@@ -36,6 +38,7 @@ def send_snapshot_fd(
         raise ValueError("handoff unavailable")
     fd = None
     try:
+        channel.settimeout(HANDOFF_TIMEOUT_SECONDS)
         fd = os.open(snapshot, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode)
@@ -69,26 +72,27 @@ def receive_snapshot_fd(
         raise ValueError("handoff unavailable")
     incoming = array.array("i")
     try:
+        channel.settimeout(HANDOFF_TIMEOUT_SECONDS)
         payload, controls, flags, _ = channel.recvmsg(
             _MAX_MESSAGE, socket.CMSG_SPACE(4 * incoming.itemsize)
         )
         received = []
-        for level, kind, data in controls:
-            if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
-                count = len(data) // incoming.itemsize
-                received.extend(struct.unpack(f"{count}i", data[:count * incoming.itemsize]))
         try:
+            for level, kind, data in controls:
+                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                    count = len(data) // incoming.itemsize
+                    received.extend(struct.unpack(f"{count}i", data[:count * incoming.itemsize]))
             if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC) or payload != b"S" or len(received) != 1:
                 raise ValueError("handoff unavailable")
             fd = received[0]
             info = os.fstat(fd)
-            access = __import__("fcntl").fcntl(fd, __import__("fcntl").F_GETFL)
+            access = fcntl.fcntl(fd, fcntl.F_GETFL)
             if (not stat.S_ISREG(info.st_mode) or info.st_uid != producer_uid
                     or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
                     or access & os.O_ACCMODE != os.O_RDONLY):
                 raise ValueError("handoff unavailable")
-            received.clear()
             os.set_inheritable(fd, False)
+            received.clear()
             return fd
         finally:
             for fd in received:

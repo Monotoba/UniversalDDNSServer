@@ -49,6 +49,45 @@ class SnapshotHandoffTests(unittest.TestCase):
             receive_snapshot_fd(self.right, authorized_uid=os.geteuid(),
                                 producer_uid=os.geteuid())
 
+    def test_peer_disconnect_fails_closed(self):
+        self.left.close()
+        with self.assertRaisesRegex(ValueError, "^handoff unavailable$"):
+            receive_snapshot_fd(self.right, authorized_uid=os.geteuid(),
+                                producer_uid=os.geteuid())
+
+    def test_missing_message_times_out(self):
+        from unittest.mock import patch
+        with patch("universalddns.snapshot_handoff.HANDOFF_TIMEOUT_SECONDS", 0.02):
+            with self.assertRaisesRegex(ValueError, "^handoff unavailable$"):
+                receive_snapshot_fd(self.right, authorized_uid=os.geteuid(),
+                                    producer_uid=os.geteuid())
+
+    def test_multiple_rights_rejected_without_descriptor_leak(self):
+        import array
+        before = len(os.listdir("/proc/self/fd"))
+        first = os.open(self.path, os.O_RDONLY)
+        second = os.open(self.path, os.O_RDONLY)
+        try:
+            rights = array.array("i", [first, second])
+            self.left.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                          rights.tobytes())])
+            with self.assertRaisesRegex(ValueError, "^handoff unavailable$"):
+                receive_snapshot_fd(self.right, authorized_uid=os.geteuid(),
+                                    producer_uid=os.geteuid())
+        finally:
+            os.close(first)
+            os.close(second)
+        self.assertEqual(len(os.listdir("/proc/self/fd")), before)
+
+    def test_duplicate_received_fd_is_not_inheritable(self):
+        send_snapshot_fd(self.left, self.path, authorized_uid=os.geteuid())
+        fd = receive_snapshot_fd(self.right, authorized_uid=os.geteuid(),
+                                 producer_uid=os.geteuid())
+        try:
+            self.assertFalse(os.get_inheritable(fd))
+        finally:
+            os.close(fd)
+
     def test_insecure_permissions_rejected(self):
         self.path.chmod(0o644)
         with self.assertRaisesRegex(ValueError, "^handoff unavailable$"):
