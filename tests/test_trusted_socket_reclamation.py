@@ -1,5 +1,4 @@
 """Isolated trusted socket coordinator recovery contract."""
-import os
 import socket
 import tempfile
 import unittest
