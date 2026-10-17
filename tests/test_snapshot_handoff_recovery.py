@@ -3,6 +3,7 @@
 Uses disposable same-UID processes; cross-UID acceptance lives in its own fixture.
 """
 import os
+from contextlib import closing
 import resource
 import signal
 import socket
@@ -22,7 +23,8 @@ class HandoffRecoveryTests(unittest.TestCase):
         self.path.chmod(0o600)
 
     def test_killed_producer_closes_socket_and_recovery_succeeds(self):
-        with socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM) as (parent, peer):
+        parent, peer = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        with closing(parent), closing(peer):
             pid = os.fork()
             if pid == 0:
                 parent.close()
@@ -43,7 +45,8 @@ class HandoffRecoveryTests(unittest.TestCase):
                 except ProcessLookupError:
                     pass
             # A fresh socket is independent of the crashed endpoint.
-        with socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM) as (a, b):
+        a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        with closing(a), closing(b):
             send_snapshot_fd(a, self.path, authorized_uid=os.geteuid())
             fd = receive_snapshot_fd(b, authorized_uid=os.geteuid(),
                                      producer_uid=os.geteuid())
