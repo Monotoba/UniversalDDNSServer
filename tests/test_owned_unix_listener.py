@@ -85,6 +85,50 @@ class OwnedListenerTests(unittest.TestCase):
         self.root.chmod(0o700)
         self.path.unlink()
 
+    def test_pinned_directory_descriptor_survives_rename_without_redirecting_cleanup(self):
+        server = OwnedUnixListener(self.root)
+        fd = server._dirfd
+        expected = os.fstat(fd)
+        relocated = self.root.with_name(self.root.name + "-moved")
+        self.root.rename(relocated)
+        self.root.mkdir(mode=0o700)
+        replacement = self.root / "ipc.sock"
+        replacement.write_text("replacement", encoding="ascii")
+        self.assertEqual((os.fstat(fd).st_dev, os.fstat(fd).st_ino),
+                         (expected.st_dev, expected.st_ino))
+        server.close()
+        self.assertEqual(replacement.read_text(encoding="ascii"), "replacement")
+        with self.assertRaises(OSError):
+            os.fstat(fd)
+        replacement.unlink()
+        self.root.rmdir()
+        relocated.rename(self.root)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
+    def test_symlink_replacement_is_not_unlinked_via_dirfd(self):
+        server = OwnedUnixListener(self.root)
+        old = self.root / "previous.sock"
+        self.path.rename(old)
+        sentinel = self.root / "sentinel"
+        sentinel.write_text("protected", encoding="ascii")
+        self.path.symlink_to(sentinel)
+        server.close()
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(sentinel.read_text(encoding="ascii"), "protected")
+        self.path.unlink()
+        old.unlink()
+
+    def test_dirfd_released_on_close_and_idempotent(self):
+        server = OwnedUnixListener(self.root)
+        pinned = server._dirfd
+        self.assertFalse(os.get_inheritable(pinned))
+        server.close()
+        server.close()
+        with self.assertRaises(OSError):
+            os.fstat(pinned)
+        self.assertFalse(self.path.exists())
+
     def test_reject_insecure_directory(self):
         self.root.chmod(0o755)
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
