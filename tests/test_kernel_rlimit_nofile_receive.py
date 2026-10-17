@@ -58,7 +58,7 @@ _CHILD = textwrap.dedent("""
                         rx, authorized_uid=os.geteuid(),
                         producer_uid=os.geteuid())
                     try:
-                        assert os.read(recovered, 32) == b"fixture"
+                        assert os.pread(recovered, 32, 0) == b"fixture"
                     finally:
                         os.close(recovered)
                     # The reference FD and original socketpair remain usable.
