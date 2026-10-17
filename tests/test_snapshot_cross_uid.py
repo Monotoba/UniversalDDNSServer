@@ -15,6 +15,8 @@ from universalddns.consistent_snapshot import read_snapshot_fd
 from universalddns.inventory_snapshot import publish_inventory_snapshot
 from universalddns.snapshot_handoff import receive_snapshot_fd, send_snapshot_fd
 
+PRODUCER_UID = 65533
+PRODUCER_GID = 65533
 READER_UID = 65534
 READER_GID = 65534
 
@@ -90,6 +92,93 @@ class CrossUidSnapshotTests(unittest.TestCase):
                     _, status = os.waitpid(child, 0)
                 self.assertTrue(os.WIFEXITED(status))
                 self.assertEqual(os.WEXITSTATUS(status), 0)
+
+    def test_nonroot_producer_to_distinct_reader_and_socket_lifecycle(self):
+        """Root only provisions fixture; neither communicating process is root."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            os.chown(root, PRODUCER_UID, PRODUCER_GID)
+            live = root / "live.sqlite3"
+            private = root / "published"
+            private.mkdir(mode=0o700)
+            os.chown(private, PRODUCER_UID, PRODUCER_GID)
+            # Source setup done by fixture administrator, then handed to producer.
+            with sqlite3.connect(live) as db:
+                db.execute("""CREATE TABLE managed_records (
+                    record_id TEXT PRIMARY KEY, zone TEXT, name TEXT,
+                    record_type TEXT, ttl INTEGER, values_json TEXT,
+                    revision INTEGER, active INTEGER)""")
+                db.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
+                           ("one", "test", "a", "A", 300, "[]", 1, 1))
+            os.chown(live, PRODUCER_UID, PRODUCER_GID)
+            os.chmod(live, 0o600)
+            address = "\\x00uddns-nonroot-" + uuid.uuid4().hex
+            producer = os.fork()
+            if producer == 0:
+                try:
+                    os.setgroups([])
+                    os.setgid(PRODUCER_GID)
+                    os.setuid(PRODUCER_UID)
+                    publish_inventory_snapshot(live, private / "inventory.sqlite3")
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                        listener.bind(address)
+                        listener.listen(1)
+                        listener.settimeout(8)
+                        with listener.accept()[0] as channel:
+                            channel.settimeout(7)
+                            send_snapshot_fd(channel, private / "inventory.sqlite3",
+                                             authorized_uid=READER_UID)
+                    os._exit(0)
+                except BaseException as exc:
+                    print(f"nonroot producer failed: {exc!r}", file=sys.stderr, flush=True)
+                    os._exit(1)
+            reader = os.fork()
+            if reader == 0:
+                try:
+                    os.setgroups([])
+                    os.setgid(READER_GID)
+                    os.setuid(READER_UID)
+                    for path in (live, private / "inventory.sqlite3"):
+                        try:
+                            opened = os.open(path, os.O_RDONLY)
+                        except PermissionError:
+                            pass
+                        else:
+                            os.close(opened)
+                            raise AssertionError("reader opened producer private data")
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                        client.settimeout(7)
+                        # Abstract socket may not yet be bound by producer.
+                        import time
+                        for attempt in range(70):
+                            try:
+                                client.connect(address)
+                                break
+                            except ConnectionRefusedError:
+                                if attempt == 69:
+                                    raise
+                                time.sleep(0.05)
+                        received = receive_snapshot_fd(
+                            client, authorized_uid=PRODUCER_UID,
+                            producer_uid=PRODUCER_UID)
+                        try:
+                            result = read_snapshot_fd(
+                                received, trusted_producer_uid=PRODUCER_UID)
+                            assert result["total_records"] == 1
+                            assert result["staged_active_records"] == 1
+                        finally:
+                            os.close(received)
+                    os._exit(0)
+                except BaseException as exc:
+                    print(f"nonroot reader failed: {exc!r}", file=sys.stderr, flush=True)
+                    os._exit(1)
+            for pid in (producer, reader):
+                _, status = os.waitpid(pid, 0)
+                self.assertTrue(os.WIFEXITED(status))
+                self.assertEqual(os.WEXITSTATUS(status), 0)
+            # Abstract socket is not a persistent filesystem path.
+            self.assertFalse(any(p.name.startswith("uddns-nonroot") for p in root.iterdir()))
 
 
 if __name__ == "__main__":
