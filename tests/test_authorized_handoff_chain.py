@@ -72,7 +72,7 @@ class AuthorizedHandoffChainTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                         self.publish()
                 with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
-                    self.registry.validate({"generation": "a" * 32)
+                    self.registry.validate({"generation": "a" * 32})
 
     def test_default_legacy_path_and_invalid_mode(self):
         self.assertEqual(publish_with_authorized_child(
