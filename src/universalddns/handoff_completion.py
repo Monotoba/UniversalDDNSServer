@@ -73,6 +73,10 @@ def receive_completed_snapshot(
         channel.sendall(b"V" + session.challenge)
         if _read_exact(channel, 33, deadline) != b"A" + session.challenge:
             raise ValueError("snapshot unavailable")
+        # Reject bytes already queued beyond the one permitted completion frame.
+        # A later write remains a protocol violation not provable at this instant.
+        if channel.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT):
+            raise ValueError("snapshot unavailable")
         if deadline is not None:
             _remaining(deadline)
         require_live_peer_pidfd(
