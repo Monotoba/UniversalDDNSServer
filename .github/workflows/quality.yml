@@ -21,3 +21,5 @@ jobs:
         run: ruff check .
       - name: Mypy (typed domain and ports)
         run: mypy
+      - name: Validate read-only VM smoke script syntax
+        run: bash -n deploy/verify-v0.5-dashboard-readonly.sh
