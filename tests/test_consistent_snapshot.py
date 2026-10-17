@@ -49,7 +49,8 @@ class ConsistentSnapshotTests(unittest.TestCase):
                                  producer_uid=os.geteuid())
         self.addCleanup(os.close, fd)
         old = read_snapshot_fd(fd, trusted_producer_uid=os.geteuid())
-        self.snapshot.unlink()
+        moved = self.snapshot.with_name("renamed-snapshot.sqlite3")
+        self.snapshot.rename(moved)
         self.assertEqual(read_snapshot_fd(fd, trusted_producer_uid=os.geteuid()), old)
         self.assertEqual(old["total_records"], 1)
 
