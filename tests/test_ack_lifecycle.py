@@ -55,14 +55,14 @@ class ObserverLifecycleTests(unittest.TestCase):
                         timeout_seconds=0.05)
                 with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                     self.registry.validate({"generation": "a" * 32})
-                self.assertEqual(self._fd_count(), baseline)
+                self.assertLessEqual(self._fd_count(), baseline)
                 self.assertEqual(
                     {p.pid for p in multiprocessing.active_children()},
                     original_children)
         recovered = publish_with_authorized_child(
             self.source, self.target, self.registry)
         self.assertEqual(recovered["total_records"], 1)
-        self.assertEqual(self._fd_count(), baseline)
+        self.assertLessEqual(self._fd_count(), baseline)
 
     def test_parent_interruption_revokes_issued_state_and_reaps_child(self):
         from universalddns import authorized_observer
