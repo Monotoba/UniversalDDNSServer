@@ -6,14 +6,23 @@ Caller must authenticate the peer before sending any descriptor.
 import array
 import fcntl
 import os
+import secrets
 import socket
 import stat
 import struct
 from pathlib import Path
 
-_MAX_MESSAGE = 1
+_MAX_MESSAGE = 33
 HANDOFF_TIMEOUT_SECONDS = 2.0
 _CREDENTIALS = struct.Struct("3i")
+
+
+class HandoffSession:
+    """Single-use receiver challenge. Never reuse after success or failure."""
+
+    def __init__(self):
+        self.challenge = secrets.token_bytes(32)
+        self.consumed = False
 
 
 def peer_credentials(channel: socket.socket) -> tuple[int, int, int]:
@@ -30,7 +39,7 @@ def peer_credentials(channel: socket.socket) -> tuple[int, int, int]:
 
 def send_snapshot_fd(
     channel: socket.socket, snapshot: str | Path, *, authorized_uid: int,
-    authorized_pid: int | None = None,
+    authorized_pid: int | None = None, session_challenge: bytes | None = None,
 ) -> None:
     """Send one validated read-only snapshot fd to the authorized peer."""
     if (type(authorized_uid) is not int or authorized_uid < 0
@@ -39,6 +48,9 @@ def send_snapshot_fd(
         raise ValueError("handoff unavailable")
     pid, uid, _ = peer_credentials(channel)
     if uid != authorized_uid or (authorized_pid is not None and pid != authorized_pid):
+        raise ValueError("handoff unavailable")
+    if (session_challenge is not None and
+            (type(session_challenge) is not bytes or len(session_challenge) != 32)):
         raise ValueError("handoff unavailable")
     fd = None
     try:
@@ -50,9 +62,9 @@ def send_snapshot_fd(
                 or info.st_uid != os.geteuid() or info.st_nlink != 1):
             raise ValueError("handoff unavailable")
         rights = array.array("i", [fd])
-        sent = channel.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+        sent = channel.sendmsg([b"S" + (session_challenge or b"")], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
                                           rights.tobytes())])
-        if sent != 1:
+        if sent != 1 + (32 if session_challenge is not None else 0):
             raise ValueError("handoff unavailable")
     except OSError as exc:
         raise ValueError("handoff unavailable") from exc
@@ -63,7 +75,7 @@ def send_snapshot_fd(
 
 def receive_snapshot_fd(
     channel: socket.socket, *, authorized_uid: int, producer_uid: int,
-    authorized_pid: int | None = None,
+    authorized_pid: int | None = None, session: HandoffSession | None = None,
 ) -> int:
     """Receive exactly one read-only descriptor, caller must close result.
 
@@ -78,6 +90,10 @@ def receive_snapshot_fd(
     pid, uid, _ = peer_credentials(channel)
     if uid != authorized_uid or (authorized_pid is not None and pid != authorized_pid):
         raise ValueError("handoff unavailable")
+    if session is not None:
+        if type(session) is not HandoffSession or session.consumed:
+            raise ValueError("handoff unavailable")
+        session.consumed = True
     incoming = array.array("i")
     try:
         channel.settimeout(HANDOFF_TIMEOUT_SECONDS)
@@ -90,7 +106,8 @@ def receive_snapshot_fd(
                 if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
                     count = len(data) // incoming.itemsize
                     received.extend(struct.unpack(f"{count}i", data[:count * incoming.itemsize]))
-            if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC) or payload != b"S" or len(received) != 1:
+            expected = b"S" if session is None else b"S" + session.challenge
+            if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC) or payload != expected or len(received) != 1:
                 raise ValueError("handoff unavailable")
             fd = received[0]
             info = os.fstat(fd)
