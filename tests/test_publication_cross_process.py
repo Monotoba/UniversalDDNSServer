@@ -4,7 +4,6 @@ No live SQLite databases, service accounts, broker endpoints, or persistent sock
 """
 import multiprocessing
 import os
-import shutil
 import sqlite3
 import stat
 import tempfile
