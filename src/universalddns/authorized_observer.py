@@ -48,6 +48,12 @@ def _read_bounded_ack(connection, deadline: float) -> bytes:
 
 
 
+def _require_deadline(deadline: float) -> None:
+    """Refuse issuance after the overall deadline (not a hard CPU watchdog)."""
+    if time.monotonic() >= deadline:
+        raise ValueError("snapshot unavailable")
+
+
 def _publisher_child(source: str, destination: str, connection, nonce: str) -> None:
     try:
         def acknowledged(generation: str) -> None:
@@ -77,6 +83,7 @@ def publish_with_authorized_child(
         raise ValueError("snapshot unavailable")
     parent = child = process = None
     succeeded = False
+    deadline = time.monotonic() + timeout_seconds
     try:
         registry.invalidate()
         context = multiprocessing.get_context("fork")
@@ -88,11 +95,12 @@ def publish_with_authorized_child(
         process.start()
         child.close()
         child = None
-        deadline = time.monotonic() + timeout_seconds
+        _require_deadline(deadline)
         message = _read_bounded_ack(parent, deadline)
         process.join(max(0, deadline - time.monotonic()))
         if process.is_alive() or process.exitcode != 0:
             raise ValueError("snapshot unavailable")
+        _require_deadline(deadline)
         generation = decode_ack(message, nonce)
         # After clean child exit, EOF is mandatory; trailing bytes are refused.
         if os.read(parent.fileno(), 1) != b"":
@@ -100,8 +108,10 @@ def publish_with_authorized_child(
         snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
+        _require_deadline(deadline)
         registry.issue(generation)
         validated = read_current_authorized_snapshot(destination, registry)
+        _require_deadline(deadline)
         succeeded = True
         return validated
     except (OSError, EOFError, ValueError, TypeError) as exc:
