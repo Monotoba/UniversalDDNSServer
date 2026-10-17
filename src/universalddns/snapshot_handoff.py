@@ -10,6 +10,7 @@ import secrets
 import socket
 import stat
 import struct
+import time
 from pathlib import Path
 
 _MAX_MESSAGE = 33
@@ -76,6 +77,7 @@ def send_snapshot_fd(
 def receive_snapshot_fd(
     channel: socket.socket, *, authorized_uid: int, producer_uid: int,
     authorized_pid: int | None = None, session: HandoffSession | None = None,
+    deadline: float | None = None,
 ) -> int:
     """Receive exactly one read-only descriptor, caller must close result.
 
@@ -96,7 +98,13 @@ def receive_snapshot_fd(
         session.consumed = True
     incoming = array.array("i")
     try:
-        channel.settimeout(HANDOFF_TIMEOUT_SECONDS)
+        if deadline is None:
+            channel.settimeout(HANDOFF_TIMEOUT_SECONDS)
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("handoff unavailable")
+            channel.settimeout(min(HANDOFF_TIMEOUT_SECONDS, remaining))
         payload, controls, flags, _ = channel.recvmsg(
             _MAX_MESSAGE, socket.CMSG_SPACE(4 * incoming.itemsize)
         )
