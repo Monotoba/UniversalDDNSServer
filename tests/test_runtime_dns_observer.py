@@ -1,6 +1,5 @@
 """Prove API runtime wires only authoritative observation into record details."""
 import os
-import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
