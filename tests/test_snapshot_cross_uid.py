@@ -131,7 +131,8 @@ class CrossUidSnapshotTests(unittest.TestCase):
                                              authorized_uid=READER_UID)
                     os._exit(0)
                 except BaseException as exc:
-                    print(f"nonroot producer failed: {exc!r}", file=sys.stderr, flush=True)
+                    import traceback
+                    traceback.print_exc()
                     os._exit(1)
             reader = os.fork()
             if reader == 0:
