@@ -42,6 +42,7 @@ jobs:
         run: |
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_dedicated_publisher_identity.py' -v
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_cross_uid_verified_handoff.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_cross_uid_handoff_negative.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
