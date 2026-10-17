@@ -64,7 +64,8 @@ def receive_completed_snapshot(
             channel, authorized_uid=authorized_uid,
             producer_uid=producer_uid, authorized_pid=authorized_pid,
             session=session, expected_generation=expected_generation,
-            expected_identity=expected_identity, peer_pidfd=peer_pidfd)
+            expected_identity=expected_identity, peer_pidfd=peer_pidfd,
+            deadline=deadline)
         if deadline is not None:
             channel.settimeout(min(HANDOFF_TIMEOUT_SECONDS, _remaining(deadline)))
         else:
