@@ -7,7 +7,9 @@ protocol; only the parent-created child is authorized in this fixture.
 import multiprocessing
 import os
 import secrets
+import select
 import stat
+import time
 import threading
 from pathlib import Path
 
@@ -17,6 +19,33 @@ from .inventory_snapshot import publish_inventory_snapshot
 from .snapshot_issuance import SnapshotIssuanceRegistry
 
 _observer_lock = threading.Lock()
+
+
+def _read_exact_until(fd: int, count: int, deadline: float) -> bytes:
+    """Bounded raw-pipe read; never deserialize or wait past the deadline."""
+    data = bytearray()
+    while len(data) < count:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("snapshot unavailable")
+        ready, _, _ = select.select([fd], [], [], remaining)
+        if not ready:
+            raise ValueError("snapshot unavailable")
+        chunk = os.read(fd, count - len(data))
+        if not chunk:
+            raise ValueError("snapshot unavailable")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def _read_bounded_ack(connection, deadline: float) -> bytes:
+    """Read the Connection wire length before the fixed-size binary frame."""
+    fd = connection.fileno()
+    length = int.from_bytes(_read_exact_until(fd, 4, deadline), "big", signed=True)
+    if length != FRAME_BYTES:
+        raise ValueError("snapshot unavailable")
+    return _read_exact_until(fd, FRAME_BYTES, deadline)
+
 
 
 def _publisher_child(source: str, destination: str, connection, nonce: str) -> None:
@@ -59,20 +88,15 @@ def publish_with_authorized_child(
         process.start()
         child.close()
         child = None
-        if not parent.poll(timeout_seconds):
-            raise ValueError("snapshot unavailable")
-        message = parent.recv_bytes(FRAME_BYTES)
-        process.join(timeout_seconds)
+        deadline = time.monotonic() + timeout_seconds
+        message = _read_bounded_ack(parent, deadline)
+        process.join(max(0, deadline - time.monotonic()))
         if process.is_alive() or process.exitcode != 0:
             raise ValueError("snapshot unavailable")
         generation = decode_ack(message, nonce)
-        if parent.poll(0):
-            try:
-                parent.recv_bytes(FRAME_BYTES)
-            except EOFError:
-                pass  # Closed writer is normal; a second payload is not.
-            else:
-                raise ValueError("snapshot unavailable")
+        # After clean child exit, EOF is mandatory; trailing bytes are refused.
+        if os.read(parent.fileno(), 1) != b"":
+            raise ValueError("snapshot unavailable")
         snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
