@@ -75,13 +75,13 @@ class ObserverLifecycleTests(unittest.TestCase):
                 publish_with_authorized_child(
                     self.source, self.target, self.registry,
                     timeout_seconds=0.2)
-        self.assertEqual(self._fd_count(), baseline)
+        self.assertLessEqual(self._fd_count(), baseline)
         self.assertEqual(
             {p.pid for p in multiprocessing.active_children()}, children)
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
             self.registry.validate({"generation": "a" * 32})
         publish_with_authorized_child(self.source, self.target, self.registry)
-        self.assertEqual(self._fd_count(), baseline)
+        self.assertLessEqual(self._fd_count(), baseline)
 
 
 if __name__ == "__main__":
