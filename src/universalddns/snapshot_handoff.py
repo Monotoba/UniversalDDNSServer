@@ -29,12 +29,16 @@ def peer_credentials(channel: socket.socket) -> tuple[int, int, int]:
 
 
 def send_snapshot_fd(
-    channel: socket.socket, snapshot: str | Path, *, authorized_uid: int
+    channel: socket.socket, snapshot: str | Path, *, authorized_uid: int,
+    authorized_pid: int | None = None,
 ) -> None:
     """Send one validated read-only snapshot fd to the authorized peer."""
-    if type(authorized_uid) is not int or authorized_uid < 0:
+    if (type(authorized_uid) is not int or authorized_uid < 0
+            or (authorized_pid is not None and
+                (type(authorized_pid) is not int or authorized_pid <= 0))):
         raise ValueError("handoff unavailable")
-    if peer_credentials(channel)[1] != authorized_uid:
+    pid, uid, _ = peer_credentials(channel)
+    if uid != authorized_uid or (authorized_pid is not None and pid != authorized_pid):
         raise ValueError("handoff unavailable")
     fd = None
     try:
@@ -58,7 +62,8 @@ def send_snapshot_fd(
 
 
 def receive_snapshot_fd(
-    channel: socket.socket, *, authorized_uid: int, producer_uid: int
+    channel: socket.socket, *, authorized_uid: int, producer_uid: int,
+    authorized_pid: int | None = None,
 ) -> int:
     """Receive exactly one read-only descriptor, caller must close result.
 
@@ -66,9 +71,12 @@ def receive_snapshot_fd(
     its contents, expected generation and freshness before using counts.
     """
     if (type(authorized_uid) is not int or authorized_uid < 0
-            or type(producer_uid) is not int or producer_uid < 0):
+            or type(producer_uid) is not int or producer_uid < 0
+            or (authorized_pid is not None and
+                (type(authorized_pid) is not int or authorized_pid <= 0))):
         raise ValueError("handoff unavailable")
-    if peer_credentials(channel)[1] != authorized_uid:
+    pid, uid, _ = peer_credentials(channel)
+    if uid != authorized_uid or (authorized_pid is not None and pid != authorized_pid):
         raise ValueError("handoff unavailable")
     incoming = array.array("i")
     try:
