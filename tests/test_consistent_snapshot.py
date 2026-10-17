@@ -1,12 +1,14 @@
 """Generation-consistent snapshot reader under atomic replacement."""
 import sqlite3
 import os
+import socket
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from universalddns.consistent_snapshot import read_consistent_snapshot
+from universalddns.consistent_snapshot import read_consistent_snapshot, read_snapshot_fd
+from universalddns.snapshot_handoff import send_snapshot_fd, receive_snapshot_fd
 from universalddns.inventory_snapshot import publish_inventory_snapshot
 
 
@@ -36,6 +38,40 @@ class ConsistentSnapshotTests(unittest.TestCase):
             read_consistent_snapshot(self.snapshot, trusted_producer_uid=owner + 1)
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
             read_consistent_snapshot(self.snapshot, trusted_producer_uid=True)
+
+    def test_descriptor_handoff_reads_snapshot_without_reopening_path(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.addCleanup(left.close)
+        self.addCleanup(right.close)
+        send_snapshot_fd(left, self.snapshot, authorized_uid=os.geteuid())
+        fd = receive_snapshot_fd(right, authorized_uid=os.geteuid(),
+                                 producer_uid=os.geteuid())
+        self.addCleanup(os.close, fd)
+        old = read_snapshot_fd(fd, trusted_producer_uid=os.geteuid())
+        moved = self.snapshot.with_name("renamed-snapshot.sqlite3")
+        self.snapshot.rename(moved)
+        self.assertEqual(read_snapshot_fd(fd, trusted_producer_uid=os.geteuid()), old)
+        self.assertEqual(old["total_records"], 1)
+
+    def test_descriptor_is_not_closed_on_rejection(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        fd = os.open(self.snapshot, os.O_RDONLY)
+        try:
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                read_snapshot_fd(fd, trusted_producer_uid=os.geteuid() + 1)
+            self.assertTrue(os.fstat(fd).st_size > 0)
+        finally:
+            os.close(fd)
+
+    def test_writable_descriptor_rejected(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        fd = os.open(self.snapshot, os.O_RDWR)
+        try:
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                read_snapshot_fd(fd, trusted_producer_uid=os.geteuid())
+        finally:
+            os.close(fd)
 
     def test_generation_matches_counts(self):
         publish_inventory_snapshot(self.live, self.snapshot)
@@ -90,18 +126,18 @@ class ConsistentSnapshotTests(unittest.TestCase):
 
     def test_changed_file_during_read_refused(self):
         publish_inventory_snapshot(self.live, self.snapshot)
-        original_read = os.read
+        original_read = os.pread
         changed = [False]
 
-        def modify_after_first_chunk(fd, count):
-            chunk = original_read(fd, count)
+        def modify_after_first_chunk(fd, count, offset):
+            chunk = original_read(fd, count, offset)
             if not changed[0]:
                 changed[0] = True
                 with self.snapshot.open("ab") as stream:
                     stream.write(b"changed")
             return chunk
 
-        with patch("universalddns.consistent_snapshot.os.read",
+        with patch("universalddns.consistent_snapshot.os.pread",
                    side_effect=modify_after_first_chunk):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 read_consistent_snapshot(self.snapshot)

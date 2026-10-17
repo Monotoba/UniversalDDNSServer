@@ -3,6 +3,7 @@
 Not connected to broker. Requires publisher-controlled rollback-mode snapshots.
 """
 import os
+import fcntl
 import sqlite3
 import stat
 import time
@@ -26,12 +27,31 @@ def read_consistent_snapshot(
     if trusted_producer_uid is not None and (type(trusted_producer_uid) is not int or trusted_producer_uid < 0):
         raise ValueError("snapshot unavailable")
     expected_uid = os.geteuid() if trusted_producer_uid is None else trusted_producer_uid
-    fd = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as exc:
+        raise ValueError("snapshot unavailable") from exc
+    try:
+        return read_snapshot_fd(fd, trusted_producer_uid=expected_uid)
+    finally:
+        os.close(fd)
+
+
+def read_snapshot_fd(fd: int, *, trusted_producer_uid: int) -> dict[str, object]:
+    """Consume an already-open read-only descriptor without closing it.
+
+    The caller retains descriptor ownership; validation is performed on the
+    inode itself. No path reopening or permission escalation takes place.
+    """
+    if (type(fd) is not int or fd < 0 or type(trusted_producer_uid) is not int
+            or trusted_producer_uid < 0):
+        raise ValueError("snapshot unavailable")
+    try:
         info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
-                or info.st_uid != expected_uid or info.st_nlink != 1
+        access = fcntl.fcntl(fd, fcntl.F_GETFL)
+        if (access & os.O_ACCMODE != os.O_RDONLY
+                or not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_uid != trusted_producer_uid or info.st_nlink != 1
                 or not 100 <= info.st_size <= MAX_SNAPSHOT_BYTES):
             raise ValueError("snapshot unavailable")
         header = os.pread(fd, 20, 0)
@@ -40,14 +60,16 @@ def read_consistent_snapshot(
         deadline = time.monotonic() + READ_DEADLINE_SECONDS
         chunks = []
         remaining = info.st_size
+        offset = 0
         while remaining:
             if time.monotonic() >= deadline:
                 raise ValueError("snapshot unavailable")
-            block = os.read(fd, min(65536, remaining))
+            block = os.pread(fd, min(65536, remaining), offset)
             if not block:
                 raise ValueError("snapshot unavailable")
             chunks.append(block)
             remaining -= len(block)
+            offset += len(block)
         after = os.fstat(fd)
         if (time.monotonic() >= deadline or after.st_size != info.st_size
                 or after.st_mtime_ns != info.st_mtime_ns
@@ -83,6 +105,3 @@ def read_consistent_snapshot(
                 "staged_inactive_records": inactive}
     except (OSError, sqlite3.Error, ValueError, AttributeError) as exc:
         raise ValueError("snapshot unavailable") from exc
-    finally:
-        if fd is not None:
-            os.close(fd)
