@@ -5,6 +5,8 @@ and returns a bounded binary metadata frame, never Python objects.
 """
 import multiprocessing
 import os
+import stat
+import fcntl
 import struct
 import time
 import uuid
@@ -49,7 +51,12 @@ def verify_snapshot_supervised(
         if type(pinned_fd) is not int or pinned_fd < 0:
             raise ValueError("snapshot unavailable")
         try:
-            os.fstat(pinned_fd)
+            pinned_identity = os.fstat(pinned_fd)
+            flags = fcntl.fcntl(pinned_fd, fcntl.F_GETFL)
+            if (not stat.S_ISREG(pinned_identity.st_mode)
+                    or pinned_identity.st_nlink != 1
+                    or flags & os.O_ACCMODE != os.O_RDONLY):
+                raise ValueError("snapshot unavailable")
         except OSError as exc:
             raise ValueError("snapshot unavailable") from exc
     deadline = time.monotonic() + timeout_seconds
@@ -76,6 +83,14 @@ def verify_snapshot_supervised(
             raise ValueError("snapshot unavailable")
         if time.monotonic() >= deadline:
             raise ValueError("snapshot unavailable")
+        if pinned_fd is not None:
+            after = os.fstat(pinned_fd)
+            if ((after.st_dev, after.st_ino) !=
+                    (pinned_identity.st_dev, pinned_identity.st_ino)
+                    or after.st_nlink != 1
+                    or fcntl.fcntl(pinned_fd, fcntl.F_GETFL) & os.O_ACCMODE
+                    != os.O_RDONLY):
+                raise ValueError("snapshot unavailable")
         magic, generation, created, total, active, inactive = _FRAME.unpack(frame)
         if magic != _MAGIC or active + inactive != total:
             raise ValueError("snapshot unavailable")
