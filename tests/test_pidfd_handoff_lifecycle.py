@@ -75,24 +75,39 @@ class PidfdHandoffLifecycleTests(unittest.TestCase):
                         waited = True
                         self.assertTrue(os.WIFEXITED(status))
                         self.assertEqual(os.WEXITSTATUS(status), 0)
-                    count = len(os.listdir("/proc/self/fd"))
-                    if exited or wrong_pidfd:
-                        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
-                            receive_verified_snapshot(
+                    received_fds = []
+                    actual_read = verified_handoff.read_snapshot_fd
+
+                    def capture_received(fd, *, trusted_producer_uid):
+                        received_fds.append(fd)
+                        return actual_read(
+                            fd, trusted_producer_uid=trusted_producer_uid)
+
+                    with patch.object(verified_handoff, "read_snapshot_fd",
+                                      side_effect=capture_received):
+                        if exited or wrong_pidfd:
+                            with self.assertRaisesRegex(
+                                    ValueError, "^snapshot unavailable$"):
+                                receive_verified_snapshot(
+                                    channel, authorized_uid=os.geteuid(),
+                                    producer_uid=os.geteuid(), authorized_pid=child,
+                                    session=session, expected_generation=self.generation,
+                                    expected_identity=self.identity,
+                                    peer_pidfd=other if wrong_pidfd else pidfd)
+                            self.assertTrue(session.consumed)
+                        else:
+                            result = receive_verified_snapshot(
                                 channel, authorized_uid=os.geteuid(),
                                 producer_uid=os.geteuid(), authorized_pid=child,
                                 session=session, expected_generation=self.generation,
-                                expected_identity=self.identity,
-                                peer_pidfd=other if wrong_pidfd else pidfd)
-                        self.assertTrue(session.consumed)
-                    else:
-                        result = receive_verified_snapshot(
-                            channel, authorized_uid=os.geteuid(),
-                            producer_uid=os.geteuid(), authorized_pid=child,
-                            session=session, expected_generation=self.generation,
-                            expected_identity=self.identity, peer_pidfd=pidfd)
-                        self.assertEqual(result["generation"], self.generation)
-                    self.assertLessEqual(len(os.listdir("/proc/self/fd")), count)
+                                expected_identity=self.identity, peer_pidfd=pidfd)
+                            self.assertEqual(result["generation"], self.generation)
+                    # A rejected pidfd is checked before receiving SCM_RIGHTS.
+                    self.assertEqual(len(received_fds), 0 if (
+                        exited or wrong_pidfd) else 1)
+                    for received_fd in received_fds:
+                        with self.assertRaises(OSError):
+                            os.fstat(received_fd)
             finally:
                 if not waited:
                     try:
