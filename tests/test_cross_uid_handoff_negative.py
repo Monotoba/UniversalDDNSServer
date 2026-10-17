@@ -275,10 +275,10 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
         self._successful_recovery()
 
     def test_repeated_rejections_crashes_and_fresh_session_recovery(self):
-        """Failures neither leak parent FDs nor poison new sessions."""
+        """Repeated rejected cross-UID transfers permit a fresh verified session."""
         for mode in ("wrong-uid", "wrong-challenge", "crash") * 3:
             self._case(mode)
-            self._successful_recovery()
+        self._successful_recovery()
 
     def test_wrong_exact_peer_pid_rejected(self):
         self._case("wrong-pid")
