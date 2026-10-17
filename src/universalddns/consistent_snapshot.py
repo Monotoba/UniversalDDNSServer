@@ -23,6 +23,9 @@ def read_consistent_snapshot(
     Reading via the already-open descriptor avoids SQLite reopening a deleted
     pathname. Deserialization needs bounded memory; not for live databases.
     """
+    if trusted_producer_uid is not None and (type(trusted_producer_uid) is not int or trusted_producer_uid < 0):
+        raise ValueError("snapshot unavailable")
+    expected_uid = os.geteuid() if trusted_producer_uid is None else trusted_producer_uid
     fd = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
