@@ -68,6 +68,7 @@ def _publisher_child(source: str, destination: str, connection, nonce: str) -> N
 def publish_with_authorized_child(
     source: str | Path, destination: str | Path,
     registry: SnapshotIssuanceRegistry, *, timeout_seconds: float = 10.0,
+    supervised_verification: bool = False,
 ) -> dict[str, object]:
     """Issue only after a known child succeeds and bytes match its acknowledgement.
 
@@ -78,6 +79,8 @@ def publish_with_authorized_child(
     if os.name != "posix" or not hasattr(os, "fork"):
         raise ValueError("snapshot unavailable")
     if type(timeout_seconds) not in (float, int) or not 0 < timeout_seconds <= 30:
+        raise ValueError("snapshot unavailable")
+    if type(supervised_verification) is not bool:
         raise ValueError("snapshot unavailable")
     if not _observer_lock.acquire(blocking=False):
         raise ValueError("snapshot unavailable")
@@ -105,12 +108,18 @@ def publish_with_authorized_child(
         # After clean child exit, EOF is mandatory; trailing bytes are refused.
         if os.read(parent.fileno(), 1) != b"":
             raise ValueError("snapshot unavailable")
-        snapshot = read_consistent_snapshot(destination)
+        if supervised_verification:
+            snapshot = _read_supervised_current(destination, deadline)
+        else:
+            snapshot = read_consistent_snapshot(destination)
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
         _require_deadline(deadline)
         registry.issue(generation)
-        validated = read_current_authorized_snapshot(destination, registry)
+        if supervised_verification:
+            validated = registry.validate(_read_supervised_current(destination, deadline))
+        else:
+            validated = read_current_authorized_snapshot(destination, registry)
         _require_deadline(deadline)
         succeeded = True
         return validated
@@ -150,5 +159,28 @@ def read_current_authorized_snapshot(
         if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
             raise ValueError("snapshot unavailable")
         return validated
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError("snapshot unavailable") from exc
+
+
+
+def _read_supervised_current(destination: str | Path, deadline: float) -> dict[str, object]:
+    """Read current metadata in a supervised child; reject path replacement."""
+    # Local import avoids the verifier's existing dependency on the framing helper.
+    from .supervised_verifier import verify_snapshot_supervised
+
+    target = Path(destination)
+    try:
+        before = target.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ValueError("snapshot unavailable")
+        _require_deadline(deadline)
+        snapshot = verify_snapshot_supervised(
+            target, timeout_seconds=deadline - time.monotonic())
+        after = target.lstat()
+        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+            raise ValueError("snapshot unavailable")
+        _require_deadline(deadline)
+        return snapshot
     except (OSError, ValueError, TypeError) as exc:
         raise ValueError("snapshot unavailable") from exc
