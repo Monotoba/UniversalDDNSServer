@@ -61,7 +61,6 @@ class CompletionHandshakeTests(unittest.TestCase):
                         if mode == "crash":
                             os._exit(0)
                         if mode == "silent":
-                            import time
                             time.sleep(3)
                         elif mode == "replay":
                             channel.recv(33)
