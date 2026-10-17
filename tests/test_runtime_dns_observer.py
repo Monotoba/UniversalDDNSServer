@@ -46,12 +46,16 @@ class RuntimeAuthoritativeObserverTests(unittest.TestCase):
         def orchestrator(_instance):
             raise AssertionError("record details must not instantiate publisher")
 
-        with patch.dict(os.environ, {"UNIVERSALDDNS_CONFIG": "/unused"}), \\
-             patch.object(runtime, "load_settings", return_value=settings), \\
-             patch.object(runtime, "RecordCatalog", Catalog), \\
-             patch.object(runtime, "factories", return_value=(journal, orchestrator, lambda: (principal,))), \\
-             patch.object(runtime, "catalog_snapshot", return_value=({"host": rrset}, (principal,))), \\
-             patch.object(runtime, "RFC2136Backend", Backend):
+        with (
+            patch.dict(os.environ, {"UNIVERSALDDNS_CONFIG": "/unused"}),
+            patch.object(runtime, "load_settings", return_value=settings),
+            patch.object(runtime, "RecordCatalog", Catalog),
+            patch.object(runtime, "factories",
+                         return_value=(journal, orchestrator, lambda: (principal,))),
+            patch.object(runtime, "catalog_snapshot",
+                         return_value=({"host": rrset}, (principal,))),
+            patch.object(runtime, "RFC2136Backend", Backend),
+        ):
             app = runtime.api_app()
         with TestClient(app) as client:
             response = client.get("/api/v1/records/host",
