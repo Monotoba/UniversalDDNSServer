@@ -19,7 +19,7 @@ class PeerIdentityHandoffTests(unittest.TestCase):
             snapshot = Path(directory) / "snapshot.sqlite3"
             snapshot.write_bytes(b"trusted fixture only")
             snapshot.chmod(0o600)
-            address = "\\x00uddns-peer-" + uuid.uuid4().hex
+            address = "\x00uddns-peer-" + uuid.uuid4().hex
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                 listener.bind(address)
                 listener.listen(1)
@@ -67,8 +67,8 @@ class PeerIdentityHandoffTests(unittest.TestCase):
                     self.assertEqual(os.WEXITSTATUS(status), 0)
 
     def test_rejects_invalid_optional_peer_pid(self):
-        with socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM) as pair:
-            left, right = pair
+        left, right = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        with left, right:
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "private"
                 path.write_bytes(b"test")
