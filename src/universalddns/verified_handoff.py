@@ -7,6 +7,7 @@ import uuid
 
 from .consistent_snapshot import read_snapshot_fd
 from .snapshot_handoff import HandoffSession, receive_snapshot_fd
+from .peer_lifecycle import require_live_peer_pidfd
 
 
 def receive_verified_snapshot(
@@ -14,6 +15,7 @@ def receive_verified_snapshot(
     session: HandoffSession, expected_generation: str,
     authorized_pid: int | None = None,
     expected_identity: tuple[int, int] | None = None,
+    peer_pidfd: int | None = None,
 ) -> dict[str, object]:
     """Consume one session, verify pinned bytes and return untrusted metadata.
 
@@ -37,6 +39,9 @@ def receive_verified_snapshot(
         raise ValueError("snapshot unavailable") from exc
     fd = None
     try:
+        if peer_pidfd is not None:
+            require_live_peer_pidfd(
+                channel, expected_pid=authorized_pid, pidfd=peer_pidfd)
         fd = receive_snapshot_fd(
             channel, authorized_uid=authorized_uid,
             producer_uid=producer_uid, authorized_pid=authorized_pid,
@@ -50,6 +55,9 @@ def receive_verified_snapshot(
         if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
                 or after.st_nlink != 1 or result["generation"] != generation):
             raise ValueError("snapshot unavailable")
+        if peer_pidfd is not None:
+            require_live_peer_pidfd(
+                channel, expected_pid=authorized_pid, pidfd=peer_pidfd)
         return result
     except (OSError, ValueError, TypeError) as exc:
         # Even if receive rejects credentials before consuming the session.
