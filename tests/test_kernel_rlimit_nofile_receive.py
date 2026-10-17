@@ -18,7 +18,8 @@ _CHILD = textwrap.dedent("""
         path = Path(root) / "snapshot"
         path.write_bytes(b"fixture")
         path.chmod(0o600)
-        with socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM) as (tx, rx):
+        tx, rx = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        with tx, rx:
             original = os.open(path, os.O_RDONLY)
             try:
                 tx.sendmsg([b"S"], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
