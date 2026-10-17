@@ -47,6 +47,7 @@ jobs:
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_handoff_completion.py' -v
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_handoff_admission.py' -v
           sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_bounded_unix_listener.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_owned_unix_listener.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
