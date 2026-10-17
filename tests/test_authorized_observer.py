@@ -52,9 +52,9 @@ class AuthorizedObserverTests(unittest.TestCase):
     def test_bad_generation_from_authorized_child_is_rejected(self):
         from universalddns import authorized_observer
 
-        def incorrect_ack(source, destination, connection):
+        def incorrect_ack(source, destination, connection, nonce):
             try:
-                connection.send("a" * 32)
+                connection.send((nonce, "a" * 32))
             finally:
                 connection.close()
 
@@ -69,7 +69,7 @@ class AuthorizedObserverTests(unittest.TestCase):
     def test_child_exits_after_ack_is_not_trusted(self):
         from universalddns import authorized_observer
 
-        def send_then_fail(source, destination, connection):
+        def send_then_fail(source, destination, connection, nonce):
             connection.send("a" * 32)
             connection.close()
             os._exit(61)
@@ -80,6 +80,37 @@ class AuthorizedObserverTests(unittest.TestCase):
                 publish_with_authorized_child(
                     self.source, self.target, self.registry)
 
+
+
+    def test_wrong_nonce_and_replayed_ack_fail_closed(self):
+        from universalddns import authorized_observer
+        for reply in ("wrong-nonce", "replay", "malformed"):
+            with self.subTest(reply=reply):
+                def malicious(source, destination, connection, nonce):
+                    if reply == "wrong-nonce":
+                        connection.send(("0" * 64, "a" * 32))
+                    elif reply == "replay":
+                        connection.send((nonce, "a" * 32))
+                        connection.send((nonce, "a" * 32))
+                    else:
+                        connection.send({"nonce": nonce, "generation": "a" * 32})
+                    connection.close()
+
+                with patch.object(authorized_observer, "_publisher_child",
+                                  side_effect=malicious):
+                    with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                        publish_with_authorized_child(self.source, self.target,
+                                                      self.registry)
+                with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                    self.registry.validate({"generation": "a" * 32})
+
+    def test_nonce_is_distinct_per_publication(self):
+        from universalddns import authorized_observer
+        with patch.object(authorized_observer.secrets, "token_hex",
+                          side_effect=["a" * 64, "b" * 64]) as generate:
+            publish_with_authorized_child(self.source, self.target, self.registry)
+            publish_with_authorized_child(self.source, self.target, self.registry)
+        self.assertEqual(generate.call_count, 2)
 
     def test_current_read_refuses_unobserved_external_republication(self):
         from universalddns.inventory_snapshot import publish_inventory_snapshot
