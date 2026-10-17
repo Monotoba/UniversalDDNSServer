@@ -8,6 +8,7 @@ import stat
 import tempfile
 import time
 from pathlib import Path
+from collections.abc import Callable
 from urllib.parse import quote
 
 from .record_inventory import read_record_inventory
@@ -67,7 +68,10 @@ def _clean_abandoned_staging(directory_fd: int) -> None:
             raise ValueError("snapshot unavailable")
         os.unlink(name, dir_fd=directory_fd)
 
-def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> dict[str, int]:
+def publish_inventory_snapshot(
+    source: str | Path, destination: str | Path, *,
+    on_durable_publication: Callable[[str], None] | None = None,
+) -> dict[str, int]:
     """Back up SQLite to an atomically replaced private standalone DB.
 
     Paths are trusted configuration, never client input. Caller must provision
@@ -131,7 +135,7 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
                 copy.execute("INSERT INTO inventory_generation VALUES (?, ?)",
                              (uuid.uuid4().hex, int(time.time())))
         counts = read_record_inventory(temp)
-        read_snapshot_generation(temp)
+        generation, _ = read_snapshot_generation(temp)
         # Compute a deterministic fingerprint for a future trusted manifest.
         # Do not treat a bare digest or filesystem mtime as authentication.
         snapshot_fingerprint(temp)
@@ -145,6 +149,8 @@ def publish_inventory_snapshot(source: str | Path, destination: str | Path) -> d
         os.replace(temp.name, target.name, src_dir_fd=directory_fd,
                    dst_dir_fd=directory_fd)
         os.fsync(directory_fd)
+        if on_durable_publication is not None:
+            on_durable_publication(generation)
         return counts
     except (OSError, sqlite3.Error, ValueError) as exc:
         raise ValueError("snapshot unavailable") from exc
