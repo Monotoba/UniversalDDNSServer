@@ -2,7 +2,7 @@
 import unittest
 from types import SimpleNamespace
 
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from universalddns.http_api import APIPrincipal, create_app
@@ -27,7 +27,7 @@ class LocalDashboardTests(unittest.TestCase):
             raise AssertionError("read-only dashboard must not write")
 
         self.app = create_app(forbidden, forbidden, records, (self.principal,))
-        self.client = TestClient(self.app)
+        self.client = TestClient(self.app, base_url="http://127.0.0.1")
         self.addCleanup(self.client.close)
 
     def test_dashboard_has_no_embedded_credentials_and_disables_caching(self):
