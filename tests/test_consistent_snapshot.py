@@ -27,6 +27,16 @@ class ConsistentSnapshotTests(unittest.TestCase):
             db.execute("INSERT INTO managed_records VALUES (?,?,?,?,?,?,?,?)",
                        ("first", "test", "a", "A", 300, "[]", 1, 1))
 
+    def test_explicit_trusted_producer_identity(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        owner = self.snapshot.stat().st_uid
+        self.assertEqual(read_consistent_snapshot(
+            self.snapshot, trusted_producer_uid=owner)["total_records"], 1)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot, trusted_producer_uid=owner + 1)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot, trusted_producer_uid=True)
+
     def test_generation_matches_counts(self):
         publish_inventory_snapshot(self.live, self.snapshot)
         result = read_consistent_snapshot(self.snapshot)
