@@ -42,8 +42,15 @@ token. Updates and administration are not available here.</p>
 <table><caption>Records available to this credential</caption>
 <thead><tr><th>ID</th><th>DNS name</th><th>Type</th><th>TTL (seconds)</th></tr></thead>
 <tbody id="records"></tbody></table>
+<h2>Recent update intents</h2>
+<p>Newest 20 updates owned by this credential for records it can currently access.</p>
+<button id="history-load" type="button">Load recent updates</button>
+<p id="history-message" role="status" aria-live="polite"></p>
+<table><caption>Recent permitted updates</caption>
+<thead><tr><th>Submitted (UTC)</th><th>Record ID</th><th>Status</th><th>Intent ID</th></tr></thead>
+<tbody id="history"></tbody></table>
 <h2>Check a known update intent</h2>
-<p>Intent IDs are not enumerable. Enter one issued to your credential.</p>
+<p>You can enter an ID from recent history or another known intent ID.</p>
 <label for="intent">Intent identifier</label>
 <input id="intent" type="text" autocomplete="off">
 <button id="lookup" type="button">Check intent</button>
@@ -56,9 +63,11 @@ SCRIPT = """'use strict';
 (() => {
   const byId = id => document.getElementById(id);
   const rows = byId('records');
+  const history = byId('history');
   const message = byId('message');
   const intentStatus = byId('intent-status');
   function clearRows() { rows.replaceChildren(); }
+  function clearHistory() { history.replaceChildren(); }
   function setMessage(target, value) { target.textContent = value; }
   async function query(path) {
     const token = byId('token').value;
@@ -89,6 +98,24 @@ SCRIPT = """'use strict';
       setMessage(message, data.records.length + ' permitted record(s).');
     } catch (error) { setMessage(message, error.message); }
   });
+  byId('history-load').addEventListener('click', async () => {
+    clearHistory();
+    setMessage(byId('history-message'), 'Loading…');
+    try {
+      const data = await query('/api/v1/intents?limit=20');
+      if (!Array.isArray(data.intents)) throw new Error('Invalid API response.');
+      for (const item of data.intents) {
+        const tr = document.createElement('tr');
+        for (const key of ['created_at', 'record_id', 'status', 'intent_id']) {
+          const td = document.createElement('td');
+          td.textContent = String(item[key] ?? '');
+          tr.appendChild(td);
+        }
+        history.appendChild(tr);
+      }
+      setMessage(byId('history-message'), data.intents.length + ' recent update(s).');
+    } catch (error) { setMessage(byId('history-message'), error.message); }
+  });
   byId('lookup').addEventListener('click', async () => {
     setMessage(intentStatus, 'Checking…');
     const identifier = byId('intent').value.trim();
@@ -105,6 +132,8 @@ SCRIPT = """'use strict';
     byId('token').value = '';
     byId('intent').value = '';
     clearRows();
+    clearHistory();
+    setMessage(byId('history-message'), '');
     setMessage(message, 'Token and displayed results cleared.');
     setMessage(intentStatus, '');
   });
