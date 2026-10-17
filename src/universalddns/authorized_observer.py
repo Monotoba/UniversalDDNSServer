@@ -6,6 +6,7 @@ protocol; only the parent-created child is authorized in this fixture.
 """
 import multiprocessing
 import os
+import stat
 import threading
 from pathlib import Path
 
@@ -67,7 +68,7 @@ def publish_with_authorized_child(
         if snapshot["generation"] != generation:
             raise ValueError("snapshot unavailable")
         registry.issue(generation)
-        validated = registry.validate(snapshot)
+        validated = read_current_authorized_snapshot(destination, registry)
         succeeded = True
         return validated
     except (OSError, EOFError, ValueError, TypeError) as exc:
@@ -84,3 +85,27 @@ def publish_with_authorized_child(
         if not succeeded:
             registry.invalidate()
         _observer_lock.release()
+
+
+def read_current_authorized_snapshot(
+    destination: str | Path, registry: SnapshotIssuanceRegistry,
+) -> dict[str, object]:
+    """Validate the *current* path against trusted issuance, not a cached read.
+
+    Reject replacement during this observation by comparing the current inode
+    before and after the pinned-FD reader. This is not a durable lease: a
+    separate publisher may replace the path immediately after return.
+    """
+    target = Path(destination)
+    try:
+        before = target.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ValueError("snapshot unavailable")
+        snapshot = read_consistent_snapshot(target)
+        validated = registry.validate(snapshot)
+        after = target.lstat()
+        if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino):
+            raise ValueError("snapshot unavailable")
+        return validated
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError("snapshot unavailable") from exc
