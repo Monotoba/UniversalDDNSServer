@@ -11,6 +11,7 @@ import stat
 import threading
 from pathlib import Path
 
+from .ack_frame import FRAME_BYTES, decode_ack, encode_ack
 from .consistent_snapshot import read_consistent_snapshot
 from .inventory_snapshot import publish_inventory_snapshot
 from .snapshot_issuance import SnapshotIssuanceRegistry
@@ -21,7 +22,7 @@ _observer_lock = threading.Lock()
 def _publisher_child(source: str, destination: str, connection, nonce: str) -> None:
     try:
         def acknowledged(generation: str) -> None:
-            connection.send((nonce, generation))
+            connection.send_bytes(encode_ack(nonce, generation))
 
         publish_inventory_snapshot(
             source, destination, on_durable_publication=acknowledged)
@@ -60,18 +61,14 @@ def publish_with_authorized_child(
         child = None
         if not parent.poll(timeout_seconds):
             raise ValueError("snapshot unavailable")
-        message = parent.recv()
+        message = parent.recv_bytes(FRAME_BYTES)
         process.join(timeout_seconds)
         if process.is_alive() or process.exitcode != 0:
             raise ValueError("snapshot unavailable")
-        if (type(message) is not tuple or len(message) != 2
-                or type(message[0]) is not str or message[0] != nonce
-                or type(message[1]) is not str):
-            raise ValueError("snapshot unavailable")
-        generation = message[1]
+        generation = decode_ack(message, nonce)
         if parent.poll(0):
             try:
-                parent.recv()
+                parent.recv_bytes(FRAME_BYTES)
             except EOFError:
                 pass  # Closed writer is normal; a second payload is not.
             else:
