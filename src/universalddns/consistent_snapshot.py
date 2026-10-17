@@ -15,7 +15,7 @@ READ_DEADLINE_SECONDS = 1.0
 MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 
 
-def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
+def read_consistent_snapshot(\n    path: str | Path, *, trusted_producer_uid: int | None = None\n) -> dict[str, object]:
     """Deserialize the same inode's bytes after an atomic destination replacement.
 
     Reading via the already-open descriptor avoids SQLite reopening a deleted
@@ -26,7 +26,7 @@ def read_consistent_snapshot(path: str | Path) -> dict[str, object]:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600
-                or info.st_uid != os.geteuid() or info.st_nlink != 1
+                or info.st_uid != expected_uid or info.st_nlink != 1
                 or not 100 <= info.st_size <= MAX_SNAPSHOT_BYTES):
             raise ValueError("snapshot unavailable")
         header = os.pread(fd, 20, 0)
