@@ -49,7 +49,6 @@ class AuthorizedObserverTests(unittest.TestCase):
 
     def test_bad_generation_from_authorized_child_is_rejected(self):
         from universalddns import authorized_observer
-        actual = authorized_observer._publisher_child
 
         def incorrect_ack(source, destination, connection):
             try:
