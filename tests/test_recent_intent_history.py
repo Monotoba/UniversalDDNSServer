@@ -48,6 +48,8 @@ class ScopedHistoryTests(unittest.TestCase):
             db.finish_owned(older.identifier, lease, succeeded=True)
             own_hidden = db.enqueue("alice", self.hidden)
             other = db.enqueue("bob", self.visible)
+            bob_lease = db.claim_with_lease(other.identifier)
+            db.finish_owned(other.identifier, bob_lease, succeeded=True)
             latest = db.enqueue("alice", self.visible)
         response = self.client.get("/api/v1/intents?limit=1", headers=self.headers)
         self.assertEqual(response.status_code, 200)
