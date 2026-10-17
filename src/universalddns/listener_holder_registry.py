@@ -29,21 +29,22 @@ class ListenerHolderRegistry:
                     or pid in self._holders or len(self._holders) >= self._max_holders):
                 raise ValueError("invalid holder registration")
             try:
-                # Validate the supplied kernel pidfd association before duplicating.
-                with open(f"/proc/self/fdinfo/{pidfd}", encoding="ascii") as record:
+                # Duplication pins the actual descriptor before we inspect its
+                # identity. The caller may close or reassign its original fd.
+                owned = os.dup(pidfd)
+            except OSError as exc:
+                raise ValueError("invalid holder registration") from exc
+            try:
+                os.set_inheritable(owned, False)
+                with open(f"/proc/self/fdinfo/{owned}", encoding="ascii") as record:
                     fields = [line.split(":", 1)[1].strip()
                               for line in record if line.startswith("Pid:")]
                 if len(fields) != 1 or fields[0] != str(pid):
                     raise ValueError("invalid holder registration")
-                owned = os.dup(pidfd)
-                try:
-                    os.set_inheritable(owned, False)
-                    self._holders[pid] = owned
-                except BaseException:
-                    os.close(owned)
-                    raise
-            except (OSError, ValueError) as exc:
-                raise ValueError("invalid holder registration") from exc
+                self._holders[pid] = owned
+            except BaseException:
+                os.close(owned)
+                raise
 
     def seal(self) -> None:
         with self._lock:
