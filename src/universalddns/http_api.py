@@ -75,6 +75,7 @@ def create_app(
     rate_limit: int = 60,
     dyndns_wait_seconds: float = 5.0,
     record_reader: Callable[[], dict[str, RecordSet]] | None = None,
+    record_observer: Callable[[RecordSet], RecordSet | None] | None = None,
 ) -> FastAPI:
     """Create an API using server-owned record mapping and token-hash configuration.
 
@@ -131,6 +132,36 @@ def create_app(
             for record_id, record in sorted(visible_records.items())
             if record_id in principal.record_ids
         ]}
+
+    @app.get("/api/v1/records/{record_id}")
+    def record_details(record_id: str, request: Request,
+                       authorization: str | None = Header(default=None)):
+        """Scoped template details and optional read-only authoritative observation."""
+        principal = authenticated(request, authorization, "intents:read")
+        try:
+            visible = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            raise HTTPException(503, "catalog view unavailable") from exc
+        if record_id not in principal.record_ids or record_id not in visible:
+            raise HTTPException(404, "record not found")
+        record = visible[record_id]
+        result = {
+            "record": {"id": record_id, "zone": record.zone, "name": record.name,
+                       "type": record.record_type, "ttl": record.ttl},
+            "authoritative": {"status": "unavailable"},
+        }
+        if record_observer is None:
+            return result
+        try:
+            observed = record_observer(record)
+        except Exception:
+            audit("dashboard_dns_observation_failed", record=record_id)
+            return result
+        result["authoritative"] = {
+            "status": ("absent" if observed is None else
+                       "matches_template" if observed == record else "differs_from_template"),
+        }
+        return result
 
     @app.put("/api/v1/records/{record_id}/address", status_code=202)
     def update(record_id: str, body: RecordAddress, request: Request,
