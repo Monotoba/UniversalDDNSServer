@@ -8,7 +8,7 @@ All notable changes are recorded here. Published alpha versions are experimental
 - Bounded recent-intent history with principal/record authorization, optional record/status filters, and page-limited status counts.
 - Authoritative DNS observation via existing RFC 2136 backend: template match, differs, absent and unavailable; no DNS update from the dashboard.
 - Expanded Linux/Python 3.11–3.13 tests for the above and isolated SCM_RIGHTS handoff robustness; new release approval and VM validation remain outstanding.
-- **Not included in the existing v0.4.0a1 release.** Package and FastAPI versions remain 0.4.0a1 on development `main` pending an independently reviewed v0.5 candidate.
+- **Not included in the existing v0.4.0a1 release.** Candidate branch package and FastAPI versions are aligned to 0.5.0a1; no v0.5 tag or release exists.
 
 ## [0.4.0a1] — 2026-10-16 (published experimental prerelease)
 

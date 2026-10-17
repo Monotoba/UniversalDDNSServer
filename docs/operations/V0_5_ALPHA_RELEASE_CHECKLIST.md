@@ -7,7 +7,7 @@ release. Do not interpret checked development items as release approval.
 ## Candidate definition
 - [x] Merge dashboard foundation, recent history, filtering, per-record details, and read-only authoritative observation (PRs #164–#168).
 - [ ] Independently review feature diff, dependencies, README, implementation plan, feature guides, and release notes.
-- [ ] Advance `pyproject.toml` and FastAPI metadata from 0.4.0a1 to 0.5.0a1 in a **separate explicitly reviewed candidate PR**.
+- [x] Align `pyproject.toml` and FastAPI metadata to 0.5.0a1 in candidate PR; final merge and release approval remain separate gates.
 - [ ] Freeze exact candidate commit and tag target. No tag or release is authorized yet.
 
 ## Automated candidate verification
@@ -27,11 +27,12 @@ release. Do not interpret checked development items as release approval.
 ## Security and release authorization
 - [ ] Reassess loopback/browser-origin assumptions, privileged operator broker, SQLite direct write permissions, token lifetime in browser memory and TSIG credential exposure in API runtime.
 - [ ] Confirm no public HTTPS, delegated RBAC, distributed rate limiting, or production security claim is made.
-- [ ] Prepare draft release notes, compare with implementation plan and changelog, and obtain explicit approval for tag/artifact publication.
+- [x] Prepare [draft release notes](../releases/v0.5.0a1-draft.md) and align implementation plan/changelog in candidate PR.
+- [ ] Independently review notes, plan and changelog; obtain explicit approval for tag/artifact publication.
 - [ ] Independently verify GitHub prerelease state, tag SHA, assets and SHA-256 checksums **after** publication, if approved.
 
 ## Current evidence and limitations
 - PRs #164–#168 were squash-merged after their five exact-head workflow checks passed; tests exercised on Python 3.11–3.13.
 - The local dashboard cannot edit records or administer credentials. `GET /api/v1/intents` lists only the authenticated principal's currently visible record updates, and counts describe at most the displayed 20 results.
 - The API runtime now wires read-only RFC 2136 observation to record details, but the dashboard has not been exercised against the user's live lab VM at this revision. DNS result labels refer to template equality, not a specific intent's success.
-- The last published release remains v0.4.0a1 and current package/API metadata remain 0.4.0a1.
+- The last published release remains v0.4.0a1. Candidate branch package/API metadata declare 0.5.0a1; there is no v0.5 tag or release.

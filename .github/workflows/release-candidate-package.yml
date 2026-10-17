@@ -23,13 +23,15 @@ jobs:
           import importlib.metadata
           import pathlib
           import tarfile
+          import tomllib
           import zipfile
           from email.parser import Parser
 
           root = pathlib.Path("dist")
           wheel, = root.glob("*.whl")
           sdist, = root.glob("*.tar.gz")
-          version = "0.4.0a1"
+          with open("pyproject.toml", "rb") as stream:
+              version = tomllib.load(stream)["project"]["version"]
           assert version in wheel.name and version in sdist.name
           with zipfile.ZipFile(wheel) as archive:
               names = archive.namelist()
