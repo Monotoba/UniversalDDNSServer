@@ -49,8 +49,9 @@ class SupervisedObserverAcceptance(unittest.TestCase):
         from universalddns import supervised_verifier
         original = supervised_verifier.verify_snapshot_supervised
 
-        def mismatch(path, *, timeout_seconds):
-            record = original(path, timeout_seconds=timeout_seconds)
+        def mismatch(path, *, timeout_seconds, pinned_fd):
+            record = original(path, timeout_seconds=timeout_seconds,
+                              pinned_fd=pinned_fd)
             return {**record, "generation": "a" * 32}
 
         with patch.object(supervised_verifier, "verify_snapshot_supervised",
@@ -65,7 +66,7 @@ class SupervisedObserverAcceptance(unittest.TestCase):
         self._publish()
         previous = read_consistent_snapshot(self.destination)
 
-        def slow(path, *, timeout_seconds):
+        def slow(path, *, timeout_seconds, pinned_fd):
             time.sleep(0.12)
             raise ValueError("snapshot unavailable")
 
@@ -81,7 +82,7 @@ class SupervisedObserverAcceptance(unittest.TestCase):
         from universalddns import supervised_verifier
         original = supervised_verifier.verify_snapshot_supervised
 
-        def replace(path, *, timeout_seconds):
+        def replace(path, *, timeout_seconds, pinned_fd):
             record = original(path, timeout_seconds=timeout_seconds)
             publish_inventory_snapshot(self.source, self.destination)
             return record
