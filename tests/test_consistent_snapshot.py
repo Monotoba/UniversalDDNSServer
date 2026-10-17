@@ -96,6 +96,34 @@ class ConsistentSnapshotTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
                 read_consistent_snapshot(self.snapshot)
 
+    def test_invalid_active_values_fail_closed(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        with sqlite3.connect(self.snapshot) as db:
+            db.execute("UPDATE managed_records SET active=7")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_duplicate_generation_rows_fail_closed(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        with sqlite3.connect(self.snapshot) as db:
+            db.execute("INSERT INTO inventory_generation "
+                       "SELECT generation, created_at FROM inventory_generation")
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_wal_mode_snapshot_rejected(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        with sqlite3.connect(self.snapshot) as db:
+            self.assertEqual(db.execute("PRAGMA journal_mode=WAL").fetchone(), ("wal",))
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            read_consistent_snapshot(self.snapshot)
+
+    def test_oversized_snapshot_rejected_before_deserialization(self):
+        publish_inventory_snapshot(self.live, self.snapshot)
+        with patch("universalddns.consistent_snapshot.MAX_SNAPSHOT_BYTES", 100):
+            with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+                read_consistent_snapshot(self.snapshot)
+
     def test_missing_or_symlink_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
             read_consistent_snapshot(self.snapshot)
