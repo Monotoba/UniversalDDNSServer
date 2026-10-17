@@ -15,7 +15,9 @@ READ_DEADLINE_SECONDS = 1.0
 MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 
 
-def read_consistent_snapshot(\n    path: str | Path, *, trusted_producer_uid: int | None = None\n) -> dict[str, object]:
+def read_consistent_snapshot(
+    path: str | Path, *, trusted_producer_uid: int | None = None
+) -> dict[str, object]:
     """Deserialize the same inode's bytes after an atomic destination replacement.
 
     Reading via the already-open descriptor avoids SQLite reopening a deleted
