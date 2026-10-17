@@ -38,6 +38,10 @@ jobs:
         run: |
           systemd-analyze verify deploy/universalddns-api.service deploy/universalddns-worker.service 2>&1 | tee /tmp/universalddns-unit-check.log
           ! grep -E '(Unknown key|Failed to parse|Missing .*=|Invalid argument)' /tmp/universalddns-unit-check.log
+      - name: Execute privileged disposable cross-UID security acceptance
+        run: |
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_dedicated_publisher_identity.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_cross_uid_verified_handoff.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
