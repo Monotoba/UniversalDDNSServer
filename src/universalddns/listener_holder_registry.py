@@ -55,8 +55,8 @@ class ListenerHolderRegistry:
 
     def reclaim(self, parent, expected_identity: tuple[int, int], *,
                 owner_pid: int, writer_exclusion_established: bool = False) -> bool:
+        """Require sealed registry and exited owned pidfds for all holders."""
         with self._lock:
-            """Require sealed registry and exited owned pidfds for all holders."""
             if self._closed:
                 raise ValueError("holder registry closed")
             if not self._sealed or owner_pid not in self._holders:
