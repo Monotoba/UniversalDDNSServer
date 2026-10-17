@@ -4,6 +4,7 @@ This helper does not authorize a publisher or issue registry trust.
 """
 import os
 import uuid
+import time
 
 from .consistent_snapshot import read_snapshot_fd
 from .snapshot_handoff import HandoffSession, receive_snapshot_fd
@@ -15,7 +16,7 @@ def receive_verified_snapshot(
     session: HandoffSession, expected_generation: str,
     authorized_pid: int | None = None,
     expected_identity: tuple[int, int] | None = None,
-    peer_pidfd: int | None = None,
+    peer_pidfd: int | None = None, deadline: float | None = None,
 ) -> dict[str, object]:
     """Consume one session, verify pinned bytes and return untrusted metadata.
 
@@ -39,13 +40,15 @@ def receive_verified_snapshot(
         raise ValueError("snapshot unavailable") from exc
     fd = None
     try:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("snapshot unavailable")
         if peer_pidfd is not None:
             require_live_peer_pidfd(
                 channel, expected_pid=authorized_pid, pidfd=peer_pidfd)
         fd = receive_snapshot_fd(
             channel, authorized_uid=authorized_uid,
             producer_uid=producer_uid, authorized_pid=authorized_pid,
-            session=session)
+            session=session, deadline=deadline)
         before = os.fstat(fd)
         if expected_identity is not None and (
             before.st_dev, before.st_ino) != expected_identity:
@@ -55,9 +58,13 @@ def receive_verified_snapshot(
         if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
                 or after.st_nlink != 1 or result["generation"] != generation):
             raise ValueError("snapshot unavailable")
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("snapshot unavailable")
         if peer_pidfd is not None:
             require_live_peer_pidfd(
                 channel, expected_pid=authorized_pid, pidfd=peer_pidfd)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("snapshot unavailable")
         return result
     except (OSError, ValueError, TypeError) as exc:
         # Even if receive rejects credentials before consuming the session.
