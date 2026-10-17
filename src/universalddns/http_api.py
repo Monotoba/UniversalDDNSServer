@@ -258,6 +258,7 @@ def create_app(
 
     @app.get("/api/v1/intents")
     def recent_intents(request: Request, limit: int = 20,
+                       record_id: str | None = None, state: str | None = None,
                        authorization: str | None = Header(default=None)):
         """List at most 50 newest intents owned by the principal, for visible RRsets."""
         principal = authenticated(request, authorization, "intents:read")
@@ -274,9 +275,15 @@ def create_app(
         }
         if len(keys_to_ids) > 200:
             raise HTTPException(503, "history view unavailable")
+        if state is not None and state not in {"pending", "applying", "applied", "failed"}:
+            raise HTTPException(422, "invalid history state")
+        if record_id is not None:
+            if record_id not in principal.record_ids or record_id not in visible_records:
+                raise HTTPException(404, "record not found")
+            keys_to_ids = {visible_records[record_id].key: record_id}
         with journal_factory() as journal:
             rows = journal.recent_for_principal(
-                principal.identifier, tuple(keys_to_ids), limit=limit)
+                principal.identifier, tuple(keys_to_ids), limit=limit, state=state)
         return {"intents": [
             {"intent_id": identifier, "record_id": keys_to_ids[(zone, name, kind)],
              "status": state, "created_at": created_at}

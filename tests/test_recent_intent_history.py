@@ -66,6 +66,33 @@ class ScopedHistoryTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/intents",
                                         headers=self.headers).json(), {"intents": []})
 
+    def test_record_and_status_filters_are_applied_before_limit(self):
+        with self.journal() as db:
+            first = db.enqueue("alice", self.visible)
+            lease = db.claim_with_lease(first.identifier)
+            db.finish_owned(first.identifier, lease, succeeded=True)
+            second = db.enqueue("alice", self.visible)
+        response = self.client.get(
+            "/api/v1/intents?limit=1&record_id=visible&state=applied",
+            headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [v["intent_id"] for v in response.json()["intents"]],
+            [first.identifier])
+        response = self.client.get(
+            "/api/v1/intents?record_id=visible&state=pending",
+            headers=self.headers)
+        self.assertEqual(
+            [v["intent_id"] for v in response.json()["intents"]],
+            [second.identifier])
+        for path in ("/api/v1/intents?record_id=hidden",
+                     "/api/v1/intents?record_id=missing"):
+            self.assertEqual(self.client.get(
+                path, headers=self.headers).status_code, 404)
+        self.assertEqual(self.client.get(
+            "/api/v1/intents?state=unknown",
+            headers=self.headers).status_code, 422)
+
     def test_auth_bounds_and_rejected_writes(self):
         self.assertEqual(self.client.get("/api/v1/intents").status_code, 401)
         for limit in ("0", "51", "-1", "invalid"):

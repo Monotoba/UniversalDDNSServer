@@ -264,7 +264,7 @@ class SQLiteIntentJournal:
 
     def recent_for_principal(
         self, principal_id: str, keys: tuple[tuple[str, str, str], ...], *,
-        limit: int = 20,
+        limit: int = 20, state: str | None = None,
     ) -> tuple[tuple[str, str, str, str, str, str], ...]:
         """Bounded newest-first history, filtered in SQLite before LIMIT.
 
@@ -276,6 +276,8 @@ class SQLiteIntentJournal:
             raise ValueError("invalid principal")
         if type(limit) is not int or not 1 <= limit <= 50:
             raise ValueError("invalid recent intent limit")
+        if state is not None and state not in {"pending", "applying", "applied", "failed"}:
+            raise ValueError("invalid history state")
         if len(keys) > 200 or any(
             type(key) is not tuple or len(key) != 3
             or any(type(part) is not str or not part for part in key)
@@ -285,12 +287,14 @@ class SQLiteIntentJournal:
         if not keys:
             return ()
         marks = ",".join("(?,?,?)" for _ in keys)
-        params = (principal_id, *(part for key in keys for part in key), limit)
+        params = (principal_id, *(part for key in keys for part in key),
+                  *((state,) if state is not None else ()), limit)
+        state_clause = "AND state=? " if state is not None else ""
         rows = self._db.execute(
             "SELECT identifier,zone,name,record_type,state,created_at "
             "FROM update_intents WHERE principal_id=? "
             "AND (zone,name,record_type) IN (" + marks + ") "
-            "ORDER BY created_at DESC, rowid DESC LIMIT ?", params,
+            + state_clause + "ORDER BY created_at DESC, rowid DESC LIMIT ?", params,
         ).fetchall()
         return tuple(rows)
 

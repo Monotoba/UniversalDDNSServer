@@ -44,7 +44,14 @@ token. Updates and administration are not available here.</p>
 <tbody id="records"></tbody></table>
 <h2>Recent update intents</h2>
 <p>Newest 20 updates owned by this credential for records it can currently access.</p>
+<label for="history-record">Record ID (optional)</label>
+<input id="history-record" type="text" autocomplete="off" placeholder="All permitted records">
+<label for="history-state">Status</label>
+<select id="history-state"><option value="">All statuses</option>
+<option value="pending">Pending</option><option value="applying">Applying</option>
+<option value="applied">Applied</option><option value="failed">Failed</option></select>
 <button id="history-load" type="button">Load recent updates</button>
+<p id="history-overview" role="status" aria-live="polite"></p>
 <p id="history-message" role="status" aria-live="polite"></p>
 <table><caption>Recent permitted updates</caption>
 <thead><tr><th>Submitted (UTC)</th><th>Record ID</th><th>Status</th><th>Intent ID</th></tr></thead>
@@ -100,9 +107,15 @@ SCRIPT = """'use strict';
   });
   byId('history-load').addEventListener('click', async () => {
     clearHistory();
+    setMessage(byId('history-overview'), '');
     setMessage(byId('history-message'), 'Loading…');
     try {
-      const data = await query('/api/v1/intents?limit=20');
+      const params = new URLSearchParams({limit: '20'});
+      const record = byId('history-record').value.trim();
+      if (record) params.set('record_id', record);
+      const state = byId('history-state').value;
+      if (state) params.set('state', state);
+      const data = await query('/api/v1/intents?' + params.toString());
       if (!Array.isArray(data.intents)) throw new Error('Invalid API response.');
       for (const item of data.intents) {
         const tr = document.createElement('tr');
@@ -113,7 +126,14 @@ SCRIPT = """'use strict';
         }
         history.appendChild(tr);
       }
-      setMessage(byId('history-message'), data.intents.length + ' recent update(s).');
+      const counts = {pending: 0, applying: 0, applied: 0, failed: 0};
+      for (const item of data.intents) {
+        if (Object.prototype.hasOwnProperty.call(counts, item.status)) counts[item.status]++;
+      }
+      setMessage(byId('history-overview'), 'In displayed page: ' +
+        Object.entries(counts).map(([key, value]) => key + ' ' + value).join(' · '));
+      setMessage(byId('history-message'), data.intents.length +
+        ' recent update(s) matching filters (maximum 20 shown).');
     } catch (error) { setMessage(byId('history-message'), error.message); }
   });
   byId('lookup').addEventListener('click', async () => {
@@ -133,6 +153,9 @@ SCRIPT = """'use strict';
     byId('intent').value = '';
     clearRows();
     clearHistory();
+    byId('history-record').value = '';
+    byId('history-state').value = '';
+    setMessage(byId('history-overview'), '');
     setMessage(byId('history-message'), '');
     setMessage(message, 'Token and displayed results cleared.');
     setMessage(intentStatus, '');

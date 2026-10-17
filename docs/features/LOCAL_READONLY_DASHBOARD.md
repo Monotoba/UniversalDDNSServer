@@ -34,3 +34,9 @@ authorization boundary; cross-origin read protections are enforced by
 the browser and existing bearer authentication. Future features must
 introduce separately reviewed administration permissions and secure
 remote-access design.
+
+## Filtering and summary (development branch)
+
+The recent-intents view supports optional `record_id` and `state` query parameters on `GET /api/v1/intents`, alongside `limit` (1–50). Valid states are `pending`, `applying`, `applied`, and `failed`. Both filters are applied **inside the database query before LIMIT**; the existing principal and currently visible-record restrictions still apply. Requesting an unauthorized or unknown record ID returns 404.
+
+The dashboard also displays status totals **only for the currently returned page** (up to 20 rows), not the entire journal. A filtered total is therefore not an overall health statistic. Pending and applying do not indicate published DNS; `applied` means the application's state was marked applied, not a live DNS read performed by this dashboard.
