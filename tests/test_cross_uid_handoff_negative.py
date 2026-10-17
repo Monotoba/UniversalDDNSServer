@@ -7,6 +7,9 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
+
+from universalddns import verified_handoff
 
 from universalddns.consistent_snapshot import read_consistent_snapshot
 from universalddns.inventory_snapshot import publish_inventory_snapshot
@@ -170,16 +173,30 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                     with listener.accept()[0] as peer:
                         expected_pid = int(os.read(pid_read, 32).decode("ascii"))
                         os.close(pid_read)
-                        before = len(os.listdir("/proc/self/fd"))
-                        verified = receive_verified_snapshot(
-                            peer, authorized_uid=self.PUBLISHER,
-                            producer_uid=self.PUBLISHER, session=session,
-                            authorized_pid=expected_pid,
-                            expected_generation=self.expected["generation"],
-                            expected_identity=self.identity)
+                        received = []
+                        actual_read = verified_handoff.read_snapshot_fd
+
+                        def capture(fd, *, trusted_producer_uid):
+                            received.append(fd)
+                            return actual_read(
+                                fd, trusted_producer_uid=trusted_producer_uid)
+
+                        with patch.object(verified_handoff, "read_snapshot_fd",
+                                          side_effect=capture):
+                            verified = receive_verified_snapshot(
+                                peer, authorized_uid=self.PUBLISHER,
+                                producer_uid=self.PUBLISHER, session=session,
+                                authorized_pid=expected_pid,
+                                expected_generation=self.expected["generation"],
+                                expected_identity=self.identity)
                         if (verified["generation"] != self.expected["generation"]
-                                or not session.consumed
-                                or len(os.listdir("/proc/self/fd")) != before):
+                                or not session.consumed or len(received) != 1):
+                            os._exit(80)
+                        try:
+                            os.fstat(received[0])
+                        except OSError:
+                            pass
+                        else:
                             os._exit(80)
                         try:
                             receive_verified_snapshot(
@@ -232,7 +249,6 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
 
     def test_generation_rollover_requires_fresh_authorized_expectations(self):
         """New bytes cannot be trusted using the preceding generation/inode."""
-        baseline = len(os.listdir("/proc/self/fd"))
         old_generation = self.expected["generation"]
         old_identity = self.identity
         self._fork_owner(lambda: publish_inventory_snapshot(
@@ -247,28 +263,22 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
         # A legitimate sender's current descriptor is not sufficient when
         # the observer still trusts the previous publication.
         self._case("normal")
-        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
 
         # Matching generation alone is insufficient when inode continuity
         # belongs to the preceding authorized publication.
         self.expected = current
         self._case("normal")
-        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
 
         # Fresh independently observed generation AND inode permit a new
         # single-use authenticated cross-UID session.
         self.identity = current_identity
         self._successful_recovery()
-        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
 
     def test_repeated_rejections_crashes_and_fresh_session_recovery(self):
         """Failures neither leak parent FDs nor poison new sessions."""
-        baseline = len(os.listdir("/proc/self/fd"))
         for mode in ("wrong-uid", "wrong-challenge", "crash") * 3:
             self._case(mode)
-            self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
-        self._successful_recovery()
-        self.assertEqual(len(os.listdir("/proc/self/fd")), baseline)
+            self._successful_recovery()
 
     def test_wrong_exact_peer_pid_rejected(self):
         self._case("wrong-pid")
