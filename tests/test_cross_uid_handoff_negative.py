@@ -154,9 +154,11 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
         session = HandoffSession()
         address = "\x00uddns-recovery-" + uuid.uuid4().hex
         ready_r, ready_w = os.pipe()
+        pid_read, pid_write = os.pipe()
         observer = os.fork()
         if observer == 0:
             os.close(ready_r)
+            os.close(pid_write)
             try:
                 self._drop(self.OBSERVER)
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
@@ -166,10 +168,13 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                     os.write(ready_w, b"R")
                     os.close(ready_w)
                     with listener.accept()[0] as peer:
+                        expected_pid = int(os.read(pid_read, 32).decode("ascii"))
+                        os.close(pid_read)
                         before = len(os.listdir("/proc/self/fd"))
                         verified = receive_verified_snapshot(
                             peer, authorized_uid=self.PUBLISHER,
                             producer_uid=self.PUBLISHER, session=session,
+                            authorized_pid=expected_pid,
                             expected_generation=self.expected["generation"],
                             expected_identity=self.identity)
                         if (verified["generation"] != self.expected["generation"]
@@ -180,6 +185,7 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                             receive_verified_snapshot(
                                 peer, authorized_uid=self.PUBLISHER,
                                 producer_uid=self.PUBLISHER, session=session,
+                                authorized_pid=expected_pid,
                                 expected_generation=self.expected["generation"])
                         except ValueError:
                             os._exit(0)
@@ -187,6 +193,7 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
             except BaseException:
                 os._exit(82)
         os.close(ready_w)
+        os.close(pid_read)
         sender = None
         try:
             self.assertEqual(os.read(ready_r, 1), b"R")
@@ -203,6 +210,8 @@ class CrossUidNegativeHandoffTests(unittest.TestCase):
                     os._exit(0)
                 except BaseException:
                     os._exit(83)
+            os.write(pid_write, str(sender).encode("ascii"))
+            os.close(pid_write)
             _, status = os.waitpid(sender, 0)
             sender = None
             self.assertTrue(os.WIFEXITED(status))
