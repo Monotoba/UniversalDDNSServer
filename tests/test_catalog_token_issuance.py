@@ -26,7 +26,8 @@ class CatalogTokenIssuanceTests(unittest.TestCase):
                 catalog.create("dynamic", managed)
             def issue():
                 output = io.StringIO()
-                with patch("universalddns.admin.load_settings", return_value=settings), \
+                with patch("universalddns.admin.load_admin_settings", return_value=settings), \
+                     patch("universalddns.admin.local_operator_identity", return_value="test-operator"), \
                      patch("sys.argv", ["record-token", "--config", "/ignored",
                                         "issue", "--principal", "device",
                                         "--record", "dynamic",
@@ -57,7 +58,8 @@ class CatalogTokenIssuanceTests(unittest.TestCase):
                                        records={"home": RecordSet(
                                            "lab.invalid", "home.lab.invalid",
                                            "A", 60, ("192.0.2.1",))})
-            with patch("universalddns.admin.load_settings", return_value=settings), \
+            with patch("universalddns.admin.load_admin_settings", return_value=settings), \
+                 patch("universalddns.admin.local_operator_identity", return_value="test-operator"), \
                  patch("sys.argv", ["token-admin", "--config", "/ignored",
                                     "issue", "--principal", "device",
                                     "--record", "missing",

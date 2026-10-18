@@ -34,19 +34,88 @@ Copy the actual VM_IP from virsh. Reboot using `virsh -c qemu:///system reboot u
 
 The launcher stores the cached Ubuntu cloud image in `~/VMs/uddns-prealpha` but installs the *runtime* qcow2 disk and seed ISO under `/var/lib/libvirt/images` to avoid QEMU home-directory access and AppArmor failures. It detects an already active default NAT network. It refuses to overwrite a VM definition or existing runtime disk.
 
-The guest script installs an isolated BIND 9 lab zone (`lab.invalid`), a loopback-only HTTP API, and the publishing worker. Its test results are not proof of production security or public deployment readiness.
+The guest script installs an isolated BIND 9 lab zone (`lab.invalid`), a loopback-only HTTP API, and the publishing worker. For a **new disposable VM**, the installer issues the initial `vm-test` credential through the trusted `TokenStore` fixture API as the service account. This does **not** use or bypass the operator-gated credential CLI; its audit operator is `null` (internal fixture issuance). Production administrators must instead use an authorized non-root operator as described in the [v0.4 operator guide](../../docs/operations/V0_4_LOCAL_OPERATOR_UPGRADE.md). Its test results are not proof of production security or public deployment readiness.
 
 **Archive path:** reports are generated in `/home/ubuntu/uddns-validation-TIMESTAMP.tar.gz`, *not* `~/uddns-results/`. Review before sharing; logs can contain sensitive data. The restore test makes a SQLite online backup and restores into a separate scratch database, comparing all table contents to the original; it never replaces the live database. The recovery test stops the worker **before** queuing an update, verifies persisted pending intent and idempotency, restarts the worker, and checks authoritative DNS. It does not cover a crash during an in-flight DNS publication or prove exactly-once transport.
 
-For a VM installed from an earlier checkout, first update the guest repository and copy the new script into the home directory:
+For a VM installed from an earlier checkout, use the safeguarded updater above to upgrade source, package and services together. **Do not replace an installed-VM upgrade with a bare `git pull`.** To refresh only a standalone test script *after* a verified upgrade:
 
 ```sh
-ssh ubuntu@VM_IP 'sudo git -C /opt/universalddns/src pull --ff-only && cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh'
+ssh ubuntu@VM_IP 'cp /opt/universalddns/src/tests/deployment/vm-test.sh ~/vm-test.sh'
 ```
 
 Each mode writes a `*.log.json` with test name, PASS/FAIL and exit code under `~/uddns-results/`. Keep the local token outside Git; inspect report archives before sharing.
 
 The `inflight` test is a **deterministic simulated post-publication timeout** using a disposable SQLite database and fake authoritative backend; it validates reconciliation without a second publish. It is not proof of actual SIGKILL timing, BIND transport exactly-once semantics, or fully offline production database restoration. The `report` command now includes its own final result in the archive.
+
+## Current v0.4 development validation sequence
+
+For an **already installed** `uddns-prealpha` VM, take an independent VM snapshot or offline disk backup **before** upgrading. From the host, discover the current IP (do not reuse a sample address):
+
+```sh
+sudo virsh list --all
+sudo virsh domifaddr uddns-prealpha
+sudo virsh net-dhcp-leases default
+ssh ubuntu@VM_IP 'hostname && hostname -I'
+```
+
+Verify the remote hostname really is `uddns-prealpha`. Then upgrade the installed fixture with its safeguarded updater:
+
+```sh
+ssh ubuntu@VM_IP 'curl -fsSL https://raw.githubusercontent.com/Monotoba/UniversalDDNSServer/main/tests/deployment/update-vm.sh -o ~/update-vm.sh'
+ssh ubuntu@VM_IP 'bash ~/update-vm.sh'
+ssh ubuntu@VM_IP 'bash ~/update-vm.sh --verify'
+```
+
+After the updater passes, run the intended authoritative DNS-writing regression **only against the isolated BIND 9 lab zone**:
+
+```sh
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh update'
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh tsig-deny'
+ssh ubuntu@VM_IP 'bash /opt/universalddns/src/tests/deployment/vm-test.sh report'
+```
+
+The `update` mode tests only the **static** `home.lab.invalid` A record: authenticated REST enqueue → separate worker → observed authoritative BIND result. The `tsig-deny` mode proves the key cannot update a different name. Neither mode exercises dynamic record catalog creation/activation, credential CLI group membership, reactivation blockers or SQLite audit attribution. For these v0.4 features, use the dedicated Python unit and BIND integration suite; do **not** claim complete installed-VM feature coverage from `vm-test.sh`.
+
+The `--verify` updater mode validates installed services without deliberately publishing DNS. The `report` mode collects local evidence; inspect archives for sensitive output before sharing. `offline-restore` modifies the installed VM database and requires an independent snapshot; do not run it as routine read-only verification. Keep the VM loopback-only and avoid production zones.
+
+## v0.4 scratch-only catalog and credential lifecycle regression
+
+Run this check inside the installed disposable VM with the installed virtualenv, after the guarded update:
+
+```sh
+ssh ubuntu@VM_IP '/opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-catalog-lifecycle.py'
+```
+
+It creates a temporary SQLite database under the running user's temporary directory and checks record staging, token grant visibility, refusal to reactivate while a stale grant exists, reference-based revocation, audit operator metadata, safe activation, and replacement credentials. It does **not** open the installed production/service SQLite database, contact HTTP/BIND, issue a usable installed-service credential, or modify any running service. The `fixture` audit actor is synthetic test metadata, **not** a verified OS operator. This test is helpful VM-side coverage, but does not replace the separate release-gate requirement to exercise real operator-group permissions and live installed-service catalog changes.
+
+## Installed-VM operator readiness preflight (v0.4)
+
+Once the safeguarded VM update has completed, run the following **from an actual non-root operator login** that is a member of `universalddns-operators` and has appropriate permissions for the configuration and database:
+
+```sh
+bash /opt/universalddns/src/tests/deployment/check-operator-readiness.sh
+```
+
+This is a strictly read-only preflight: it verifies the disposable hostname and VM environment, POSIX authorization, configuration access, SQLite read access and the presence of catalog, credential and audit tables. It uses SQLite `mode=ro`, never invokes CLI commands that can initialize tables or migrate schemas, and never prints stored credential metadata. It does not check database write permission, attempt credential issuance, or exercise the live HTTP/BIND lifecycle. A passing preflight is **not** completion of the full v0.4 installed-VM validation gate. To confirm write access and actual operator CLI behavior, use a separately planned, snapshot-protected active test.
+
+## Authorized local CLI integration check (v0.4)
+
+After the read-only operator preflight succeeds, run this **as your actual non-root operator account** on the disposable `uddns-prealpha` guest (not as root, not using `sudo -u`):
+
+```sh
+/opt/universalddns/venv/bin/python /opt/universalddns/src/tests/deployment/check-operator-cli-lifecycle.py
+```
+
+This script creates a temporary config, private dummy TSIG file and **temporary SQLite database**. It executes the real local `record_admin` and `admin` commands as the current OS operator, verifying create, stage, credential issue, inventory, deactivation, blocker detection, reactivation refusal, reference revocation, successful reactivation, and operator-attributed audit events. It captures the temporary bearer token without displaying it. Temporary files are deleted on completion. It never touches `/var/lib/universalddns/state.sqlite3`, the installed config/TSIG key, HTTP services or authoritative DNS.
+
+**Limitations:** This validates real local OS group authorization through CLI subprocesses, but not the production-owned service database's write permissions or live REST/BIND update behavior. Use separately approved snapshot-backed testing for those operations. Passing this script must not be recorded as full v0.4 installed-host lifecycle validation.
+
+### Isolated operator-CLI CI coverage
+
+The `Operator CLI isolated fixture` GitHub Actions workflow enrolls the ephemeral Ubuntu runner account in a newly created `universalddns-operators` group and exercises the real `record_admin` and `admin` subprocesses against a **temporary** SQLite database, dummy TSIG secret, and temporary configuration. The script accepts a non-VM host only with both `GITHUB_ACTIONS=true` and `UDDNS_CI_ISOLATED_FIXTURE=1`; the normal test-VM hostname/virtualization guard is unchanged otherwise.
+
+This is not an installed-VM validation, production authorization audit, or a network publication test. It does not grant access to the test VM's installed service database.
 
 ## Offline installation restoration (destructive to the installed DB file; VM only)
 

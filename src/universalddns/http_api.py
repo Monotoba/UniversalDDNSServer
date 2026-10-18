@@ -16,6 +16,7 @@ from .audit import audit
 from .adapters.sqlite_intents import SQLiteIntentJournal
 from .domain import RecordSet
 from .intents import UpdateConflict, UnknownIntent
+from .local_dashboard import dashboard, dashboard_script
 from .orchestrator import UpdateOrchestrator
 
 _KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -74,6 +75,7 @@ def create_app(
     rate_limit: int = 60,
     dyndns_wait_seconds: float = 5.0,
     record_reader: Callable[[], dict[str, RecordSet]] | None = None,
+    record_observer: Callable[[RecordSet], RecordSet | None] | None = None,
 ) -> FastAPI:
     """Create an API using server-owned record mapping and token-hash configuration.
 
@@ -85,7 +87,7 @@ def create_app(
     if not 0 <= dyndns_wait_seconds <= 30:
         raise ValueError('invalid DynDNS2 confirmation timeout')
     gate = RateGate(rate_limit)
-    app = FastAPI(title="UniversalDDNSServer", version="0.3.0a1")
+    app = FastAPI(title="UniversalDDNSServer", version="0.5.0a1")
 
     def authenticated(request: Request, authorization: str | None, scope: str) -> APIPrincipal:
         token = authorization[7:] if authorization and authorization.startswith("Bearer ") else ""
@@ -105,6 +107,10 @@ def create_app(
             raise HTTPException(403, "insufficient scope")
         request.state.principal_id = identity.identifier
         return identity
+
+    app.add_api_route("/dashboard", dashboard, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/dashboard/app.js", dashboard_script,
+                      methods=["GET"], include_in_schema=False)
 
     @app.get("/health/live")
     def live():
@@ -126,6 +132,36 @@ def create_app(
             for record_id, record in sorted(visible_records.items())
             if record_id in principal.record_ids
         ]}
+
+    @app.get("/api/v1/records/{record_id}")
+    def record_details(record_id: str, request: Request,
+                       authorization: str | None = Header(default=None)):
+        """Scoped template details and optional read-only authoritative observation."""
+        principal = authenticated(request, authorization, "intents:read")
+        try:
+            visible = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            raise HTTPException(503, "catalog view unavailable") from exc
+        if record_id not in principal.record_ids or record_id not in visible:
+            raise HTTPException(404, "record not found")
+        record = visible[record_id]
+        result = {
+            "record": {"id": record_id, "zone": record.zone, "name": record.name,
+                       "type": record.record_type, "ttl": record.ttl},
+            "authoritative": {"status": "unavailable"},
+        }
+        if record_observer is None:
+            return result
+        try:
+            observed = record_observer(record)
+        except Exception:
+            audit("dashboard_dns_observation_failed", record=record_id)
+            return result
+        result["authoritative"] = {
+            "status": ("absent" if observed is None else
+                       "matches_template" if observed == record else "differs_from_template"),
+        }
+        return result
 
     @app.put("/api/v1/records/{record_id}/address", status_code=202)
     def update(record_id: str, body: RecordAddress, request: Request,
@@ -250,6 +286,40 @@ def create_app(
                 return answer("911")
             time.sleep(0.1)
         return answer("911")
+
+    @app.get("/api/v1/intents")
+    def recent_intents(request: Request, limit: int = 20,
+                       record_id: str | None = None, state: str | None = None,
+                       authorization: str | None = Header(default=None)):
+        """List at most 50 newest intents owned by the principal, for visible RRsets."""
+        principal = authenticated(request, authorization, "intents:read")
+        if type(limit) is not int or not 1 <= limit <= 50:
+            raise HTTPException(422, "invalid history limit")
+        try:
+            visible_records = record_reader() if record_reader is not None else records
+        except ValueError as exc:
+            audit("catalog_snapshot_invalid", endpoint="recent_intents")
+            raise HTTPException(503, "catalog view unavailable") from exc
+        keys_to_ids = {
+            record.key: record_id for record_id, record in visible_records.items()
+            if record_id in principal.record_ids
+        }
+        if len(keys_to_ids) > 200:
+            raise HTTPException(503, "history view unavailable")
+        if state is not None and state not in {"pending", "applying", "applied", "failed"}:
+            raise HTTPException(422, "invalid history state")
+        if record_id is not None:
+            if record_id not in principal.record_ids or record_id not in visible_records:
+                raise HTTPException(404, "record not found")
+            keys_to_ids = {visible_records[record_id].key: record_id}
+        with journal_factory() as journal:
+            rows = journal.recent_for_principal(
+                principal.identifier, tuple(keys_to_ids), limit=limit, state=state)
+        return {"intents": [
+            {"intent_id": identifier, "record_id": keys_to_ids[(zone, name, kind)],
+             "status": state, "created_at": created_at}
+            for identifier, zone, name, kind, state, created_at in rows
+        ]}
 
     @app.get("/api/v1/intents/{intent_id}")
     def status(intent_id: str, request: Request,

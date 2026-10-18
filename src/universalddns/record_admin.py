@@ -6,7 +6,8 @@ import sys
 from .domain import RecordSet
 from .local_operator import local_operator_identity
 from .record_catalog import RecordCatalog
-from .runtime import load_settings
+from .token_store import TokenStore
+from .runtime import load_admin_settings
 
 
 def main():
@@ -14,6 +15,8 @@ def main():
     parser.add_argument("--config", required=True)
     sub = parser.add_subparsers(dest="operation", required=True)
     sub.add_parser("list")
+    blockers = sub.add_parser("blockers", help="List active credentials blocking reactivation")
+    blockers.add_argument("record_id")
     stage = sub.add_parser("stage", help="Set catalog activation flag; does not publish DNS")
     stage.add_argument("record_id")
     stage.add_argument("--revision", required=True, type=int)
@@ -30,7 +33,7 @@ def main():
     args = parser.parse_args()
     try:
         operator = local_operator_identity()
-        settings = load_settings(args.config)
+        settings = load_admin_settings(args.config)
         with RecordCatalog(settings.database) as catalog:
             if args.operation == "list":
                 result = {"records": [
@@ -38,6 +41,13 @@ def main():
                      "ttl": rr.ttl, "addresses": list(rr.values), "revision": revision}
                     for identifier, rr, revision in catalog.list_records()
                 ]}
+            elif args.operation == "blockers":
+                if catalog.get(args.record_id) is None:
+                    raise ValueError("record not found")
+                with TokenStore(settings.database) as tokens:
+                    grants = tokens.blocking_grants(args.record_id)
+                result = {"id": args.record_id, "blocker_count": len(grants),
+                          "blocking_credentials": grants, "recorded_by": operator}
             elif args.operation == "stage":
                 if args.record_id in settings.records:
                     raise ValueError("record ID reserved by static configuration")
@@ -55,7 +65,7 @@ def main():
             else:
                 if args.record_id in settings.records:
                     raise ValueError("record ID is reserved by static configuration")
-                rr = RecordSet(settings.dns.zone, args.name, args.type,
+                rr = RecordSet(settings.zone, args.name, args.type,
                                args.ttl, (args.address,))
                 if any(existing.key == rr.key for existing in settings.records.values()):
                     raise ValueError("DNS RRset is reserved by static configuration")

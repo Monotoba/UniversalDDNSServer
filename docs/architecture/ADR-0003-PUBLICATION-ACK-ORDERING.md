@@ -1,0 +1,5 @@
+# Publication acknowledgement ordering — isolated adapter
+
+The publisher accepts an optional in-process callback with the generation taken from the staging snapshot. It invokes the callback **only after** atomic replacement and successful directory fsync. The adapter invalidates the volatile issuer before a publication attempt and again after any exception, including failure after replacement. The previous generation must not remain trusted if publication outcome is ambiguous. The callback does not run for a failed pre-rename operation. No callback is configured by existing callers.
+
+This ordering is intentionally conservative: there is a window after atomic replacement and before acknowledgement where the new snapshot exists but is not trusted. Loss of process state after successful publication also fails closed. This adapter is only suitable for one trusted, serialized in-process caller. It does not authenticate remote acknowledgements, protect against concurrent observer races, or persist trust across restarts. Production authorization and broker integration remain blocked.

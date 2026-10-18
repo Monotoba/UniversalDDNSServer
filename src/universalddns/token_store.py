@@ -14,22 +14,45 @@ class TokenStore:
             scopes TEXT NOT NULL, records TEXT NOT NULL,
             revoked INTEGER NOT NULL DEFAULT 0
         )""")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS credential_audit (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL CHECK(action IN ('issued','revoked')),
+            credential_reference TEXT NOT NULL,
+            principal TEXT NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(credential_audit)")}
+        if "operator" not in columns:
+            self.db.execute("ALTER TABLE credential_audit ADD COLUMN operator TEXT")
         self.db.commit()
 
-    def issue(self, principal: str, scopes: frozenset[str], records: frozenset[str]) -> str:
+    def issue(self, principal: str, scopes: frozenset[str], records: frozenset[str], *, operator: str | None = None) -> str:
         if not principal.strip() or not scopes or not records:
             raise ValueError("principal, scopes and records required")
+        self._validate_operator(operator)
         token = secrets.token_urlsafe(48)
         with self.db:
-            self.db.execute("INSERT INTO api_tokens VALUES(?,?,?,?,0)",
-                            (hashlib.sha256(token.encode()).hexdigest(), principal,
-                             json.dumps(sorted(scopes)), json.dumps(sorted(records))))
+            cursor = self.db.execute("INSERT INTO api_tokens VALUES(?,?,?,?,0)",
+                                     (hashlib.sha256(token.encode()).hexdigest(), principal,
+                                      json.dumps(sorted(scopes)), json.dumps(sorted(records))))
+            self.db.execute(
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('issued',?,?,?)", (f"cred-{cursor.lastrowid}", principal, operator))
         return token
 
-    def revoke(self, token: str) -> bool:
+    def revoke(self, token: str, *, operator: str | None = None) -> bool:
+        self._validate_operator(operator)
         with self.db:
-            return self.db.execute("UPDATE api_tokens SET revoked=1 WHERE digest=? AND revoked=0",
-                                   (hashlib.sha256(token.encode()).hexdigest(),)).rowcount == 1
+            row = self.db.execute(
+                "SELECT rowid,principal FROM api_tokens WHERE digest=? AND revoked=0",
+                (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+            if row is None:
+                return False
+            self.db.execute("UPDATE api_tokens SET revoked=1 WHERE rowid=?", (row[0],))
+            self.db.execute(
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('revoked',?,?,?)", (f"cred-{row[0]}", row[1], operator))
+            return True
 
     def principals(self) -> tuple[APIPrincipal, ...]:
         rows = self.db.execute("SELECT principal,digest,scopes,records FROM api_tokens WHERE revoked=0").fetchall()
@@ -39,14 +62,79 @@ class TokenStore:
     def list_metadata(self) -> tuple[dict[str, object], ...]:
         """Local credential inventory; never expose digests or bearer tokens."""
         rows = self.db.execute(
-            "SELECT principal,scopes,records,revoked FROM api_tokens ORDER BY principal, rowid"
+            "SELECT rowid,principal,scopes,records,revoked FROM api_tokens ORDER BY principal, rowid"
         ).fetchall()
         return tuple({
+            "reference": f"cred-{rowid}",
             "principal": principal,
             "scopes": sorted(json.loads(scopes)),
             "records": sorted(json.loads(records)),
             "revoked": bool(revoked),
-        } for principal, scopes, records, revoked in rows)
+        } for rowid, principal, scopes, records, revoked in rows)
+
+    def blocking_grants(self, record_id: str) -> tuple[dict[str, object], ...]:
+        """List active credential metadata that blocks catalog reactivation.
+
+        Never return bearer tokens or credential hashes. Multiple grants from
+        the same principal remain distinct, since each requires revocation.
+        """
+        if not record_id or not isinstance(record_id, str):
+            raise ValueError("record identifier required")
+        rows = self.db.execute(
+            "SELECT rowid,principal,scopes,records FROM api_tokens "
+            "WHERE revoked=0 ORDER BY principal,rowid"
+        ).fetchall()
+        return tuple({
+            "reference": f"cred-{rowid}",
+            "principal": principal,
+            "scopes": sorted(json.loads(scopes)),
+            "records": sorted(json.loads(records)),
+        } for rowid, principal, scopes, records in rows
+            if record_id in json.loads(records))
+
+    def revoke_reference(self, reference: str, *, operator: str | None = None) -> bool:
+        """Revoke by exact local credential reference, without the bearer."""
+        if not isinstance(reference, str) or not reference.startswith("cred-"):
+            raise ValueError("invalid credential reference")
+        identifier = reference[5:]
+        if not identifier.isascii() or not identifier.isdecimal() or not 1 <= len(identifier) <= 18 or int(identifier) < 1:
+            raise ValueError("invalid credential reference")
+        self._validate_operator(operator)
+        with self.db:
+            row = self.db.execute(
+                "SELECT principal FROM api_tokens WHERE rowid=? AND revoked=0",
+                (int(identifier),)).fetchone()
+            if row is None:
+                return False
+            self.db.execute(
+                "UPDATE api_tokens SET revoked=1 WHERE rowid=?", (int(identifier),))
+            self.db.execute(
+                "INSERT INTO credential_audit(action,credential_reference,principal,operator) "
+                "VALUES ('revoked',?,?,?)", (reference, row[0], operator))
+            return True
+
+    @staticmethod
+    def _validate_operator(operator: str | None) -> None:
+        if operator is not None and (
+            not isinstance(operator, str) or not 1 <= len(operator) <= 128
+            or not operator.isascii()
+            or any(not (ch.isalnum() or ch in "-_.") for ch in operator)
+        ):
+            raise ValueError("invalid operator attribution")
+
+    def audit_history(self, *, limit: int = 100) -> tuple[dict[str, object], ...]:
+        """Newest nonsecret local credential events, bounded to 1000."""
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("invalid history limit")
+        rows = self.db.execute(
+            "SELECT event_id,action,credential_reference,principal,recorded_at,operator "
+            "FROM credential_audit ORDER BY event_id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return tuple({
+            "event_id": event_id, "action": action,
+            "reference": reference, "principal": principal,
+            "recorded_at": recorded_at, "operator": operator,
+        } for event_id, action, reference, principal, recorded_at, operator in rows)
 
     def close(self):
         self.db.close()

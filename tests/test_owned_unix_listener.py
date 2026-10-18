@@ -1,0 +1,199 @@
+"""Owned private listener lifecycle and restart tests."""
+import os
+import signal
+import socket
+import stat
+import tempfile
+import unittest
+from pathlib import Path
+
+from universalddns.owned_unix_listener import OwnedUnixListener
+
+
+class OwnedListenerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.path = self.root / "ipc.sock"
+
+    def test_graceful_shutdown_closes_clients_and_allows_restart(self):
+        with OwnedUnixListener(self.root) as server:
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            with client:
+                client.connect(str(self.path))
+                accepted = server.listener.accept()
+                self.assertEqual(server.listener.active_count, 1)
+                self.assertTrue(stat.S_ISSOCK(self.path.lstat().st_mode))
+                self.assertGreaterEqual(accepted.fileno(), 0)
+        self.assertFalse(self.path.exists())
+        self.assertEqual(accepted.fileno(), -1)
+        with OwnedUnixListener(self.root) as restarted:
+            self.assertTrue(self.path.exists())
+            self.assertEqual(restarted.listener.active_count, 0)
+        self.assertFalse(self.path.exists())
+
+    def test_existing_endpoint_and_symlink_refused_without_unlink(self):
+        self.path.write_text("untrusted", encoding="ascii")
+        with self.assertRaises(OSError):
+            OwnedUnixListener(self.root)
+        self.assertEqual(self.path.read_text(encoding="ascii"), "untrusted")
+        self.path.unlink()
+        other = self.root / "outside"
+        other.write_text("safe", encoding="ascii")
+        self.path.symlink_to(other)
+        with self.assertRaises(OSError):
+            OwnedUnixListener(self.root)
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(other.read_text(encoding="ascii"), "safe")
+
+    def test_path_replacement_never_removed_during_shutdown(self):
+        server = OwnedUnixListener(self.root)
+        former = self.root / "old.sock"
+        self.path.rename(former)
+        self.path.write_text("new occupant", encoding="ascii")
+        server.close()
+        self.assertEqual(self.path.read_text(encoding="ascii"), "new occupant")
+        self.assertTrue(former.exists())
+        former.unlink()
+        self.path.unlink()
+        with OwnedUnixListener(self.root):
+            pass
+
+    def test_replaced_parent_directory_cannot_redirect_shutdown_unlink(self):
+        server = OwnedUnixListener(self.root)
+        original = self.root.with_name(self.root.name + "-original")
+        self.root.rename(original)
+        self.root.mkdir(mode=0o700)
+        replacement = self.root / "ipc.sock"
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as impostor:
+            impostor.bind(str(replacement))
+            impostor.listen(1)
+            server.close()
+            self.assertTrue(replacement.exists())
+        replacement.unlink()
+        self.root.rmdir()
+        original.rename(self.root)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
+    def test_parent_permissions_changed_prevent_shutdown_unlink(self):
+        server = OwnedUnixListener(self.root)
+        self.root.chmod(0o755)
+        server.close()
+        self.assertTrue(self.path.exists())
+        self.root.chmod(0o700)
+        self.path.unlink()
+
+    def test_pinned_directory_descriptor_survives_rename_without_redirecting_cleanup(self):
+        server = OwnedUnixListener(self.root)
+        fd = server._dirfd
+        expected = os.fstat(fd)
+        relocated = self.root.with_name(self.root.name + "-moved")
+        self.root.rename(relocated)
+        self.root.mkdir(mode=0o700)
+        replacement = self.root / "ipc.sock"
+        replacement.write_text("replacement", encoding="ascii")
+        self.assertEqual((os.fstat(fd).st_dev, os.fstat(fd).st_ino),
+                         (expected.st_dev, expected.st_ino))
+        server.close()
+        self.assertEqual(replacement.read_text(encoding="ascii"), "replacement")
+        with self.assertRaises(OSError):
+            os.fstat(fd)
+        replacement.unlink()
+        self.root.rmdir()
+        relocated.rename(self.root)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
+    def test_symlink_replacement_is_not_unlinked_via_dirfd(self):
+        server = OwnedUnixListener(self.root)
+        old = self.root / "previous.sock"
+        self.path.rename(old)
+        sentinel = self.root / "sentinel"
+        sentinel.write_text("protected", encoding="ascii")
+        self.path.symlink_to(sentinel)
+        server.close()
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(sentinel.read_text(encoding="ascii"), "protected")
+        self.path.unlink()
+        old.unlink()
+
+    def test_dirfd_released_on_close_and_idempotent(self):
+        server = OwnedUnixListener(self.root)
+        pinned = server._dirfd
+        self.assertFalse(os.get_inheritable(pinned))
+        server.close()
+        server.close()
+        with self.assertRaises(OSError):
+            os.fstat(pinned)
+        self.assertFalse(self.path.exists())
+
+    def test_preserve_policy_does_not_unlink_valid_socket(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        server.close()
+        self.assertTrue(self.path.exists())
+        self.assertEqual(server.socket.fileno(), -1)
+        self.path.unlink()
+        with OwnedUnixListener(self.root):
+            pass
+
+    def test_preserve_policy_does_not_unlink_adversarial_replacement(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        replaced = self.root / "original.sock"
+        self.path.rename(replaced)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as attacker:
+            attacker.bind(str(self.path))
+            attacker.listen(1)
+            identity = self.path.lstat()
+            server.close()
+            after = self.path.lstat()
+            self.assertEqual((after.st_dev, after.st_ino),
+                             (identity.st_dev, identity.st_ino))
+        self.path.unlink()
+        replaced.unlink()
+
+    def test_preserve_policy_rejects_invalid_selection(self):
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            OwnedUnixListener(self.root, cleanup_policy="force")
+        self.assertFalse(self.path.exists())
+
+    def test_preserve_policy_remains_safe_with_repeated_close(self):
+        server = OwnedUnixListener(self.root, cleanup_policy="preserve")
+        fd = server._dirfd
+        server.close()
+        server.close()
+        with self.assertRaises(OSError):
+            os.fstat(fd)
+        self.assertTrue(self.path.exists())
+        self.path.unlink()
+
+    def test_reject_insecure_directory(self):
+        self.root.chmod(0o755)
+        with self.assertRaisesRegex(ValueError, "^snapshot unavailable$"):
+            OwnedUnixListener(self.root)
+
+    @unittest.skipUnless(hasattr(os, "fork"), "requires fork")
+    def test_crashed_owner_leaves_endpoint_and_requires_explicit_cleanup(self):
+        pid = os.fork()
+        if pid == 0:
+            try:
+                server = OwnedUnixListener(self.root)
+                self.assertGreaterEqual(server.socket.fileno(), 0)
+                os.kill(os.getpid(), signal.SIGKILL)
+            except BaseException:
+                os._exit(2)
+        _, status = os.waitpid(pid, 0)
+        self.assertTrue(os.WIFSIGNALED(status))
+        self.assertTrue(self.path.exists())
+        with self.assertRaises(OSError):
+            OwnedUnixListener(self.root)
+        # Coordinator explicitly verifies and removes its disposable fixture.
+        self.assertTrue(stat.S_ISSOCK(self.path.lstat().st_mode))
+        self.path.unlink()
+        with OwnedUnixListener(self.root):
+            pass
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,27 @@
+name: Operator CLI isolated fixture
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  operator-cli:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install application
+        run: python -m pip install -e '.[api]'
+      - name: Authorize CI runner identity for local operator fixture
+        run: |
+          sudo groupadd -f universalddns-operators
+          sudo usermod -aG universalddns-operators "$(id -un)"
+          getent group universalddns-operators
+      - name: Run real local administrative CLI in isolated temporary database
+        env:
+          UDDNS_CI_ISOLATED_FIXTURE: '1'
+        run: |
+          python tests/deployment/check-operator-cli-lifecycle.py

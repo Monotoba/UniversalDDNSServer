@@ -1,0 +1,57 @@
+# Local read-only management dashboard (experimental)
+
+Open `http://127.0.0.1:8765/dashboard` from the machine running the experimental
+loopback-only API. The dashboard is served only to requests whose directly
+observed client IP is loopback; it is **not** a remote-administration feature.
+
+Enter an existing token with `intents:read` scope to display the records its
+principal is authorized to discover. View the newest 20 update intents owned by your principal for currently
+permitted record templates, or enter a known intent UUID to query the
+existing owner-restricted intent-status endpoint. History is bounded to 50
+rows per request; filtering occurs in SQLite before pagination. A token with
+`records:write` is not required; this interface has no mutating controls.
+The token stays in the page's password field, is sent only in the Bearer
+Authorization header, and is not saved to cookies or browser storage.
+Clear the field or close the tab after use. Do not enter tokens on a
+machine or browser profile you do not trust.
+
+The API's existing scope and record restrictions remain authoritative; the
+dashboard does not list unauthorized records. The existing records endpoint
+shows active templates visible to the principal, not inactive catalog
+entries. The new `GET /api/v1/intents?limit=20` endpoint requires `intents:read`,
+filters by principal and currently authorized active record keys, and returns
+only intent ID, record ID, state and creation timestamp (UTC, SQLite format).
+The endpoint never returns error contents, DNS values or credentials. Pending means queued and is not proof of DNS
+publication. The dashboard provides an optional read-only authoritative DNS
+observation on record details through the configured backend; it does **not**
+independently report database or worker health, nor prove a particular intent
+was published. No new API scopes, credential issuance, administrative
+commands, or persistence are introduced.
+
+The page has a restrictive content-security policy, no-store caching,
+DOM text-node rendering, and no external assets. Do **not** reverse-proxy
+this experimental interface for remote access or configure an untrusted
+proxy to appear as a loopback peer. Loopback alone is not a full browser
+authorization boundary; cross-origin read protections are enforced by
+the browser and existing bearer authentication. Future features must
+introduce separately reviewed administration permissions and secure
+remote-access design.
+
+## Filtering and summary (merged on development `main`; not yet released)
+
+The recent-intents view supports optional `record_id` and `state` query parameters on `GET /api/v1/intents`, alongside `limit` (1–50). Valid states are `pending`, `applying`, `applied`, and `failed`. Both filters are applied **inside the database query before LIMIT**; the existing principal and currently visible-record restrictions still apply. Requesting an unauthorized or unknown record ID returns 404.
+
+The dashboard also displays status totals **only for the currently returned page** (up to 20 rows), not the entire journal. A filtered total is therefore not an overall health statistic. Pending and applying do not indicate published DNS; `applied` means the application's state was marked applied, not a live DNS read performed by this dashboard.
+
+## Per-record authoritative observation (development `main`)
+
+The record details endpoint `GET /api/v1/records/{record_id}` requires existing
+`intents:read` scope and current visibility for that record. The experimental
+API runtime now wires it to the configured RFC 2136 backend's read-only DNS
+observer. The returned status is `matches_template`, `differs_from_template`,
+`absent` or `unavailable`. Failed or non-authoritative queries never count
+as absence. The response omits DNS address values and backend errors; it does
+not prove the outcome of an individual intent. See [record observation details](RECORD_DETAIL_OBSERVATION.md).
+
+The new behavior has not been deployed to or tested on the user's lab VM at
+this development SHA. The published v0.4.0a1 artifacts do not contain it.

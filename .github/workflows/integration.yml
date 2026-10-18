@@ -38,6 +38,31 @@ jobs:
         run: |
           systemd-analyze verify deploy/universalddns-api.service deploy/universalddns-worker.service 2>&1 | tee /tmp/universalddns-unit-check.log
           ! grep -E '(Unknown key|Failed to parse|Missing .*=|Invalid argument)' /tmp/universalddns-unit-check.log
+      - name: Execute privileged disposable cross-UID security acceptance
+        run: |
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_dedicated_publisher_identity.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_cross_uid_verified_handoff.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_cross_uid_handoff_negative.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_pidfd_handoff_lifecycle.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_handoff_completion.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_handoff_admission.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_bounded_unix_listener.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_owned_unix_listener.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_trusted_socket_reclamation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_supervised_socket_reclamation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_pidfd_socket_reclamation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_inherited_listener_holders.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_listener_holder_registry.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_listener_holder_concurrency.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_pidfd_duplicate_validation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_scm_rights_failure_cleanup.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_kernel_scm_rights_truncation.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_scm_rights_receive_errors.py' -v
+          sudo env PYTHONPATH="$PWD/src" python -m unittest discover -s tests -p 'test_kernel_rlimit_nofile_receive.py' -v
+          python -m unittest discover -s tests -p 'test_local_dashboard.py' -v
+          python -m unittest discover -s tests -p 'test_recent_intent_history.py' -v
+          python -m unittest discover -s tests -p 'test_record_detail_observation.py' -v
+          python -m unittest discover -s tests -p 'test_runtime_dns_observer.py' -v
       - name: Run integration tests
         env:
           DDNS_NAMED_BIN: /usr/local/bin/ddns-ci-named
