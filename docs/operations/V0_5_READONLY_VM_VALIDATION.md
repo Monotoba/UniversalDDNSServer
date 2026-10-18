@@ -1,6 +1,6 @@
 # v0.5.0a1 read-only lab dashboard validation
 
-**Status: procedure prepared; not run against the user's Ubuntu VM.** The most recent actual VM evidence belongs to the earlier v0.4 development state. This procedure does not upgrade, restart or modify any service.
+**Status: smoke procedure executed on the user's upgraded disposable Ubuntu VM on 2026-10-17; partial acceptance only.** The smoke script itself does not upgrade, restart or modify any service; a separately authorized guarded upgrade preceded it.
 
 ## Preconditions and deployment gate
 
@@ -19,6 +19,14 @@ bash deploy/verify-v0.5-dashboard-readonly.sh ALLOWED_RECORD_ID
 The script prompts for the token invisibly and verifies loopback dashboard assets, HTTP 401 for unauthenticated record discovery, authenticated record discovery, the bounded recent-intent API response and authorized record details. It prints **only** operation statuses and the authoritative observation state, not the token, RRset addresses or full API responses. No PUT/POST/DELETE or DNS UPDATE is sent.
 
 `unavailable` is an acceptable schema outcome but **does not pass** the separately required live authoritative DNS observation acceptance criterion. A controlled isolated BIND fixture and approved temporary DNS record are required for observed match/mismatch/absence testing. This read-only script cannot establish that updates never occurred elsewhere.
+
+## October 17 lab evidence (user-reported)
+
+- Guest `uddns-prealpha` upgraded with guarded updater from SHA `a15dadf8` (0.3.0a1) to SHA `8b909866` (0.5.0a1); update and installed-host verification reported PASS. API, worker and BIND active; API loopback liveness passed.
+- Fresh cold backup `~/vm-backups/uddns-pre-v05-20261017T202744Z/` included QCOW2, seed ISO and VM XML; user confirmed both SHA-256 checks and clean `qemu-img check`. SQLite online snapshot integrity passed; updater snapshot `upgrade-backup-20261017T203243Z` retained. Neither rollback nor new backup boot recovery was tested.
+- Read-only smoke on `home`: dashboard HTML/JS HTTP 200; unauthenticated records HTTP 401; authorized discovery/history/details schema/scope PASS, final read-only smoke PASS. Live authoritative observation `differs_from_template` confirmed independently: configured A 192.0.2.10 TTL 60, BIND authoritative A 192.0.2.42 TTL 60, NOERROR and AA.
+- Issued read-only test bearer was disclosed in user-shared terminal output; it was then revoked by credential reference `cred-3`, confirmed by subsequent inventory. The original `vm-test` credential `cred-1` was also revoked; future credential-dependent tests need explicit replacement. No token is retained in this document.
+- `matches_template`, `absent`, live `unavailable`, unauthorized/inactive cross-record access and denial of write with a read-only credential remain untested against this running guest. Network isolation not proven: default route exists and SSH listens on all interfaces.
 
 ## Evidence to record privately
 
