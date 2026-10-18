@@ -42,7 +42,10 @@ class InventorySnapshotPublisherTests(unittest.TestCase):
                        ("two", "example.test", "b", "A", 300, "[]", 1, 0))
         self.assertEqual(publish_inventory_snapshot(self.source, self.target)["total_records"], 2)
         self.assertNotEqual(old_bytes, self.target.read_bytes())
-        self.assertEqual([x.name for x in self.private.iterdir()], [".inventory-publish.lock", "inventory.sqlite3"])
+        self.assertCountEqual(
+            [x.name for x in self.private.iterdir()],
+            [".inventory-publish.lock", "inventory.sqlite3"],
+        )
 
     def test_failure_retains_last_good_snapshot_and_cleans_staging(self):
         publish_inventory_snapshot(self.source, self.target)
