@@ -16,22 +16,30 @@ def rollback_function():
     start = source.index("rollback() {")
     # The rollback function ends before the preflight backup section.
     # Do not include updater commands executed before trap installation.
-    end = source.index(
-        "\n}\n\n# Complete non-destructive preflight backups",
-        start,
-    )
+    # The rollback function has a top-level closing brace.
+    # Do not depend on the comments or preflight code following it.
+    end = source.index("\n}\n", start)
     return source[start:end + 2]
 
 
 class RollbackFaultInjectionTests(unittest.TestCase):
 
-    def run_rollback(self, *, missing_worker_unit=False, fail_install=False, fail_operation=None):
+    def run_rollback(self, *, missing_worker_unit=False, fail_install=False, fail_operation=None, missing_wheel=False, bad_checksum=False, fail_checksum=False, missing_db=False, bad_db_checksum=False, snapshot_ready=True, fail_wheel_checksum=False, fail_db_checksum=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             backup = root / "backup"
             backup.mkdir()
+            db_backup = root / "db-backup"
+            db_backup.mkdir()
 
-            (backup / "state.sqlite3").write_bytes(b"test-database")
+            # A recovery wheel must exist before rollback is armed.
+            # The mocked sudo command handles checksum verification.
+            recovery_wheel = backup / "universalddnsserver-0.3.0a1-py3-none-any.whl"
+            if not missing_wheel:
+                recovery_wheel.write_bytes(b"fixture-recovery-wheel")
+
+            if not missing_db:
+                (backup / "state.sqlite3").write_bytes(b"test-database")
             (backup / "universalddns-api.service").write_text("old-api")
 
             if not missing_worker_unit:
@@ -44,6 +52,17 @@ class RollbackFaultInjectionTests(unittest.TestCase):
                 """#!/bin/sh
 printf '%s\\n' "$*" >> "$MOCK_LOG"
 case "$*" in
+  *"sha256sum"*)
+    if [ "$FAIL_CHECKSUM" = 1 ]; then exit 24; fi
+    case "$*" in
+      *"state.sqlite3"*)
+        if [ "$FAIL_DB_CHECKSUM" = 1 ]; then exit 24; fi ;;
+      *)
+        if [ "$FAIL_WHEEL_CHECKSUM" = 1 ]; then exit 24; fi ;;
+    esac
+    echo "fixture-checksum  $RECOVERY_WHEEL"
+    exit 0
+    ;;
   *"pip install"*)
     if [ "$FAIL_INSTALL" = 1 ]; then
       exit 19
@@ -72,6 +91,11 @@ API=universalddns-api
 WORKER=universalddns-worker
 BEFORE=original-commit
 BACKUP="$FIXTURE_BACKUP"
+DB_BACKUP="$FIXTURE_DB_BACKUP"
+RECOVERY_WHEEL="$FIXTURE_RECOVERY_WHEEL"
+RECOVERY_SHA="$FIXTURE_RECOVERY_SHA"
+DB_RECOVERY_SHA="$FIXTURE_DB_RECOVERY_SHA"
+DB_SNAPSHOT_READY="$FIXTURE_DB_SNAPSHOT_READY"
 
 verify_service_imports() {
     return 0
@@ -93,8 +117,24 @@ false
             env["PATH"] = str(root) + os.pathsep + env["PATH"]
             env["MOCK_LOG"] = str(log)
             env["FIXTURE_BACKUP"] = str(backup)
+            env["FIXTURE_DB_BACKUP"] = str(db_backup)
+            env["FIXTURE_RECOVERY_WHEEL"] = str(recovery_wheel)
+            env["FIXTURE_RECOVERY_SHA"] = (
+                "unexpected-checksum" if bad_checksum
+                else "fixture-checksum"
+            )
+            env["FIXTURE_DB_RECOVERY_SHA"] = (
+                "invalid-db-checksum" if bad_db_checksum
+                else "fixture-checksum"
+            )
+            env["FIXTURE_DB_SNAPSHOT_READY"] = (
+                "1" if snapshot_ready else "0"
+            )
             env["FAIL_INSTALL"] = "1" if fail_install else "0"
             env["FAIL_OPERATION"] = fail_operation or ""
+            env["FAIL_CHECKSUM"] = "1" if fail_checksum else "0"
+            env["FAIL_WHEEL_CHECKSUM"] = "1" if fail_wheel_checksum else "0"
+            env["FAIL_DB_CHECKSUM"] = "1" if fail_db_checksum else "0"
 
             result = subprocess.run(
                 ["bash", "-c", script],
@@ -113,6 +153,91 @@ false
 
             operations = log.read_text().splitlines()
             return result, operations
+
+    def test_missing_recovery_wheel_is_reported(self):
+        result, operations = self.run_rollback(missing_wheel=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Package restoration failed", result.stderr)
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertFalse(any("pip install" in op for op in operations))
+
+    def test_invalid_recovery_checksum_is_reported(self):
+        result, operations = self.run_rollback(bad_checksum=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Package restoration failed", result.stderr)
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertFalse(any("pip install" in op for op in operations))
+
+    def test_recovery_install_uses_offline_wheel(self):
+        result, operations = self.run_rollback()
+        self.assertEqual(result.returncode, 1)
+        installs = [op for op in operations if "pip install" in op]
+        self.assertEqual(len(installs), 1)
+        self.assertIn("--no-index", installs[0])
+        self.assertIn("--no-deps", installs[0])
+        self.assertIn("--force-reinstall", installs[0])
+        self.assertIn("universalddnsserver-0.3.0a1", installs[0])
+        self.assertNotIn("/fixture/repository", installs[0])
+
+    def test_failed_checksum_command_reports_incomplete_recovery(self):
+        result, operations = self.run_rollback(fail_checksum=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Package restoration failed", result.stderr)
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertIn("ROLLBACK_ATTEMPTED=YES", result.stdout)
+        self.assertFalse(any("pip install" in op for op in operations))
+        self.assertTrue(any("state.sqlite3" in op for op in operations))
+        self.assertTrue(any("daemon-reload" in op for op in operations))
+        self.assertFalse(any("systemctl start" in op for op in operations))
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_DATABASE_RECOVERY",
+            result.stderr
+        )
+
+
+    def test_wheel_checksum_failure_does_not_block_database(self):
+        result, operations = self.run_rollback(
+            fail_wheel_checksum=True
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Package restoration failed", result.stderr)
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertFalse(any(
+            "pip install" in op for op in operations
+        ))
+        self.assertTrue(any(
+            "/fixture/venv/bin/python" in op and "state.sqlite3" in op
+            for op in operations
+        ))
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
+
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
+        )
+
+    def test_database_checksum_failure_blocks_services(self):
+        result, operations = self.run_rollback(
+            fail_db_checksum=True
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "Protected database snapshot verification failed",
+            result.stderr
+        )
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_DATABASE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(any(
+            "/fixture/venv/bin/python" in op and "state.sqlite3" in op
+            for op in operations
+        ))
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
 
     def test_extracted_function_excludes_preflight(self):
         function = rollback_function()
@@ -166,7 +291,7 @@ false
 
         db_restore = next(
             i for i, item in enumerate(operations)
-            if "state.sqlite3" in item and "install -m 0600" in item
+            if "/fixture/venv/bin/python" in item and "state.sqlite3" in item
         )
 
         service_start = next(
@@ -210,6 +335,20 @@ false
         self.assertIn("ROLLBACK_OPERATIONS=PASS", result.stdout)
         self.assertNotIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
 
+    def test_failed_git_restore_blocks_services(self):
+        result, operations = self.run_rollback(
+            fail_operation="git -C"
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Git restoration failed", result.stderr)
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
+
     def test_failed_package_reinstall_is_reported(self):
         result, operations = self.run_rollback(fail_install=True)
 
@@ -217,21 +356,97 @@ false
         self.assertIn("Package restoration failed", result.stderr)
         self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
         self.assertNotIn("ROLLBACK_OPERATIONS=PASS", result.stdout)
-        self.assertTrue(
+        self.assertFalse(
             any("systemctl start" in op for op in operations)
         )
 
-    def test_failed_database_restore_is_reported(self):
+
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
+        )
+
+    def test_missing_protected_database_is_not_restored(self):
+        result, operations = self.run_rollback(missing_db=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_DATABASE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
+
+        self.assertIn(
+            "Protected database snapshot verification failed",
+            result.stderr
+        )
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertFalse(any(
+            "/fixture/venv/bin/python" in op and "state.sqlite3" in op
+            for op in operations
+        ))
+
+    def test_corrupt_database_checksum_blocks_restore(self):
         result, operations = self.run_rollback(
-            fail_operation="install -m 0600"
+            bad_db_checksum=True
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_DATABASE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
+
+        self.assertIn(
+            "Protected database snapshot verification failed",
+            result.stderr
+        )
+        self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+        self.assertFalse(any(
+            "/fixture/venv/bin/python" in op and "state.sqlite3" in op
+            for op in operations
+        ))
+
+
+    def test_incomplete_snapshot_skips_database_restore(self):
+        result, operations = self.run_rollback(
+            snapshot_ready=False
         )
 
         self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "ROLLBACK_DATABASE=SKIPPED_NO_VERIFIED_SNAPSHOT",
+            result.stdout
+        )
+        self.assertFalse(any(
+            "/fixture/venv/bin/python" in op and "state.sqlite3" in op
+            for op in operations
+        ))
+        self.assertTrue(any(
+            "systemctl start" in op
+            for op in operations
+        ))
+
+    def test_failed_database_restore_is_reported(self):
+        result, operations = self.run_rollback(
+            fail_operation="/fixture/venv/bin/python"
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_DATABASE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(any(
+            "systemctl start" in op for op in operations
+        ))
+
         self.assertIn("Database restoration failed", result.stderr)
         self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
-        self.assertTrue(
-            any("systemctl start" in op for op in operations)
-        )
+
 
     def test_failed_api_unit_restore_is_reported(self):
         result, operations = self.run_rollback(
@@ -245,6 +460,14 @@ false
             any("systemctl daemon-reload" in op for op in operations)
         )
 
+        self.assertFalse(
+            any("systemctl start" in op for op in operations)
+        )
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
+        )
+
     def test_failed_systemd_reload_is_reported(self):
         result, operations = self.run_rollback(
             fail_operation="systemctl daemon-reload"
@@ -253,8 +476,13 @@ false
         self.assertEqual(result.returncode, 1)
         self.assertIn("systemd reload failed", result.stderr)
         self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
-        self.assertTrue(
+        self.assertFalse(
             any("systemctl start" in op for op in operations)
+        )
+
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
         )
 
     def test_failed_service_restart_is_reported(self):
@@ -277,6 +505,15 @@ false
             result.stderr,
         )
         self.assertIn("ROLLBACK_OPERATIONS=FAILED", result.stderr)
+
+        self.assertIn(
+            "ROLLBACK_SERVICES=BLOCKED_INCOMPLETE_RECOVERY",
+            result.stderr
+        )
+        self.assertFalse(
+            any("systemctl start" in op for op in operations)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
