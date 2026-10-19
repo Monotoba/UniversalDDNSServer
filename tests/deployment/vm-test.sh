@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# QEMU guest-agent executions may omit HOME.
+if [[ -z "${HOME:-}" ]]; then
+  HOME=$(getent passwd "$(id -u)" | cut -d: -f6)
+  [[ -n "$HOME" && -d "$HOME" ]] || {
+    echo "Unable to determine a valid home directory" >&2
+    exit 2
+  }
+  export HOME
+fi
 MODE="${1:-verify}"
 ROOT="$HOME/uddns-results"
 mkdir -p "$ROOT"; chmod 700 "$ROOT"
